@@ -1,0 +1,30 @@
+{
+  "summary": "First-finish smoke of OrçaNext. Backend endpoints (auth, company, clients, quotes, usage, duplicate, delete, status, public GET/approve/sign, PDF public+private, receipts FREE 402 + PRO ok, upgrade/downgrade mock, expiration flow, multi-tenant isolation, unauth 401, non-admin 403, other-company 404) all pass. 50/50 block returns 402 with blocked=true after seeding quote_usage. Frontend flows (landing, register→onboarding→dashboard, sidebar usage card '0/50', admin login → /admin with metrics/users) all working.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "GET / landing 200 with hero-cta-primary and pricing-pro-cta",
+    "POST /api/auth/login admin returns 200 + JWT + cookie",
+    "GET /api/admin/metrics 200 (users/companies/quotes/mrr)",
+    "POST /api/auth/register + POST /api/company create tenant",
+    "GET /api/quotes/usage returns used/limit/blocked; increments on POST /api/quotes and duplicate",
+    "DELETE /api/quotes/{id} does NOT decrement usage (verified used=2 after delete)",
+    "Multi-tenant: user B GET /api/clients returns [] after user A creates client",
+    "POST /api/quotes/{id}/status ENVIADO -> public GET flips to VISUALIZADO",
+    "POST /api/public/quote/{token}/approve => APROVADO",
+    "POST /api/public/quote/{token}/sign accepts signer_name + signature_data",
+    "Expiration past date -> public status EXPIRADO; approve returns 400 'Este orçamento expirou.'",
+    "GET /api/quotes/{id}/pdf and public PDF both return application/pdf (%PDF header)",
+    "Receipts: FREE -> 402; after /api/plan/upgrade -> 200, downgrade back to FREE",
+    "Security: /api/quotes unauth 401; user /api/admin/metrics 403; foreign quote 404",
+    "50/50 block: seeded 47 quote_usage rows -> used=51, blocked=true, POST /api/quotes -> 402",
+    "UI Register form -> /onboarding -> Onboarding submit -> /dashboard/quotes/new",
+    "Sidebar shows 'ORÇAMENTOS ESTE MÊS 0 /50' with 'Assinar Profissional' CTA",
+    "Admin login redirects to /admin with métricas + user list rendered"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "POST /api/plan/upgrade & /api/plan/downgrade are MOCKED (no payment gateway) - verified they flip user.plan and change usage.limit to null / 50 respectively. Status update endpoint is POST /api/quotes/{id}/status (not PATCH)."
+}

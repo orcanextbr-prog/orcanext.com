@@ -1,0 +1,996 @@
+"""OrçaNext backend - SaaS multi-tenant for professional quotes."""
+from dotenv import load_dotenv
+from pathlib import Path
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
+import os
+import io
+import re
+import uuid
+import jwt
+import bcrypt
+import secrets
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Literal, Any
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
+from fastapi.responses import StreamingResponse
+from starlette.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
+
+from pdf_generator import build_quote_pdf, build_receipt_pdf
+
+# ---------- Config ----------
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALGO = "HS256"
+FREE_QUOTE_LIMIT = int(os.environ.get("FREE_QUOTE_LIMIT", "50"))
+PRO_MONTHLY_PRICE = float(os.environ.get("PRO_MONTHLY_PRICE", "49.90"))
+PRO_ANNUAL_PRICE = float(os.environ.get("PRO_ANNUAL_PRICE", "478.80"))
+
+mongo_url = os.environ['MONGO_URL']
+client = AsyncIOMotorClient(mongo_url)
+db = client[os.environ['DB_NAME']]
+
+app = FastAPI(title="OrçaNext API")
+api = APIRouter(prefix="/api")
+
+logger = logging.getLogger("orcanext")
+logging.basicConfig(level=logging.INFO)
+
+
+# ---------- Helpers ----------
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def iso(dt: datetime) -> str:
+    return dt.isoformat()
+
+
+def new_id() -> str:
+    return str(uuid.uuid4())
+
+
+def hash_password(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(pw: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(pw.encode(), hashed.encode())
+    except Exception:
+        return False
+
+
+def create_access_token(uid: str, email: str) -> str:
+    payload = {"sub": uid, "email": email, "type": "access",
+               "exp": now_utc() + timedelta(days=7)}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+
+
+def decode_token(token: str) -> dict:
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+
+
+def month_period(dt: Optional[datetime] = None) -> tuple:
+    dt = dt or now_utc()
+    start = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return start, end
+
+
+def strip_id(d: dict) -> dict:
+    if not d:
+        return d
+    d.pop("_id", None)
+    return d
+
+
+# ---------- Auth dependency ----------
+async def get_current_user(request: Request) -> dict:
+    token = request.cookies.get("access_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        raise HTTPException(401, "Não autenticado")
+    try:
+        payload = decode_token(token)
+        if payload.get("type") != "access":
+            raise HTTPException(401, "Token inválido")
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(401, "Usuário não encontrado")
+        user = strip_id(user)
+        user.pop("password_hash", None)
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Sessão expirada")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "Token inválido")
+
+
+async def get_company(user: dict = Depends(get_current_user)) -> dict:
+    company = await db.companies.find_one({"owner_id": user["id"]})
+    if not company:
+        raise HTTPException(400, "Empresa não configurada")
+    return strip_id(company)
+
+
+async def get_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Acesso negado")
+    return user
+
+
+# ---------- Audit ----------
+async def audit(company_id: str, user_id: str, action: str, entity_type: str,
+                entity_id: str, request: Optional[Request] = None, metadata: dict = None):
+    await db.audit_logs.insert_one({
+        "id": new_id(),
+        "company_id": company_id,
+        "user_id": user_id,
+        "action": action,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "metadata": metadata or {},
+        "ip": (request.client.host if request and request.client else None),
+        "user_agent": (request.headers.get("user-agent") if request else None),
+        "created_at": iso(now_utc()),
+    })
+
+
+# ---------- Models (request/response) ----------
+class RegisterIn(BaseModel):
+    name: str
+    email: EmailStr
+    password: str = Field(min_length=6)
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class CompanyIn(BaseModel):
+    name: str
+    legal_name: Optional[str] = ""
+    document: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    address: Optional[str] = ""
+    number: Optional[str] = ""
+    complement: Optional[str] = ""
+    neighborhood: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip: Optional[str] = ""
+    site: Optional[str] = ""
+    logo: Optional[str] = ""  # base64 or URL
+    brand_color: Optional[str] = "#00AD02"
+    notes: Optional[str] = ""
+
+
+class ClientIn(BaseModel):
+    type: Literal["PF", "PJ"] = "PF"
+    name: str
+    document: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    address: Optional[str] = ""
+    number: Optional[str] = ""
+    complement: Optional[str] = ""
+    neighborhood: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class ProductIn(BaseModel):
+    name: str
+    sku: Optional[str] = ""
+    description: Optional[str] = ""
+    category: Optional[str] = ""
+    unit: Optional[str] = "un"
+    price: float = 0.0
+    cost: Optional[float] = 0.0
+    image: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class ServiceIn(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    category: Optional[str] = ""
+    unit: Optional[str] = "un"
+    price: float = 0.0
+    notes: Optional[str] = ""
+
+
+class QuoteItemIn(BaseModel):
+    item_type: Literal["product", "service", "custom"] = "custom"
+    product_id: Optional[str] = None
+    service_id: Optional[str] = None
+    description: str
+    quantity: float = 1.0
+    unit: Optional[str] = "un"
+    unit_price: float = 0.0
+
+
+class QuoteIn(BaseModel):
+    client_id: Optional[str] = None
+    date: Optional[str] = None
+    expiration_date: Optional[str] = None
+    items: List[QuoteItemIn] = []
+    discount: float = 0.0
+    discount_type: Literal["value", "percent"] = "value"
+    payment_method: Optional[str] = ""
+    delivery_deadline: Optional[str] = ""
+    notes: Optional[str] = ""
+    terms: Optional[str] = ""
+    orientation: Literal["vertical", "horizontal"] = "vertical"
+    template_id: Optional[str] = None
+
+
+class ReceiptIn(BaseModel):
+    client_id: str
+    quote_id: Optional[str] = None
+    amount: float
+    description: Optional[str] = ""
+    payment_method: str = "PIX"
+    payment_date: Optional[str] = None
+    notes: Optional[str] = ""
+
+
+class SignatureIn(BaseModel):
+    signer_name: str
+    signature_data: str  # base64 dataURL from canvas
+
+
+# ---------- Startup ----------
+@app.on_event("startup")
+async def startup():
+    await db.users.create_index("email", unique=True)
+    await db.companies.create_index("owner_id", unique=True)
+    await db.quotes.create_index([("company_id", 1), ("number", 1)], unique=True)
+    await db.quotes.create_index("public_token", unique=True)
+    await db.clients.create_index([("company_id", 1)])
+    await db.products.create_index([("company_id", 1)])
+    await db.services.create_index([("company_id", 1)])
+    await db.quote_usage.create_index([("company_id", 1), ("billing_period_start", 1)])
+    # Seed admin
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@orcanext.com").lower()
+    admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@2026")
+    existing = await db.users.find_one({"email": admin_email})
+    if not existing:
+        await db.users.insert_one({
+            "id": new_id(), "email": admin_email, "name": "OrçaNext Admin",
+            "password_hash": hash_password(admin_pw), "role": "admin",
+            "plan": "PROFESSIONAL", "created_at": iso(now_utc()),
+        })
+    elif not verify_password(admin_pw, existing["password_hash"]):
+        await db.users.update_one({"email": admin_email},
+                                   {"$set": {"password_hash": hash_password(admin_pw)}})
+    logger.info("OrçaNext startup complete")
+
+
+# ---------- Auth ----------
+def set_auth_cookie(resp: Response, token: str):
+    resp.set_cookie("access_token", token, httponly=True, secure=True,
+                    samesite="none", max_age=7 * 24 * 3600, path="/")
+
+
+@api.post("/auth/register")
+async def register(payload: RegisterIn, response: Response):
+    email = payload.email.lower()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(400, "E-mail já cadastrado")
+    uid = new_id()
+    user = {
+        "id": uid, "email": email, "name": payload.name,
+        "password_hash": hash_password(payload.password),
+        "role": "user", "plan": "FREE",
+        "created_at": iso(now_utc()),
+    }
+    await db.users.insert_one(user)
+    token = create_access_token(uid, email)
+    set_auth_cookie(response, token)
+    user.pop("password_hash", None)
+    user.pop("_id", None)
+    return {"user": user, "token": token}
+
+
+@api.post("/auth/login")
+async def login(payload: LoginIn, response: Response):
+    email = payload.email.lower()
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(401, "E-mail ou senha inválidos")
+    token = create_access_token(user["id"], email)
+    set_auth_cookie(response, token)
+    strip_id(user)
+    user.pop("password_hash", None)
+    return {"user": user, "token": token}
+
+
+@api.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie("access_token", path="/")
+    return {"ok": True}
+
+
+@api.get("/auth/me")
+async def me(user: dict = Depends(get_current_user)):
+    company = await db.companies.find_one({"owner_id": user["id"]})
+    if company:
+        strip_id(company)
+    # Refresh plan from user
+    return {"user": user, "company": company}
+
+
+# ---------- Company / Onboarding ----------
+@api.post("/company")
+async def upsert_company(payload: CompanyIn, request: Request, user: dict = Depends(get_current_user)):
+    existing = await db.companies.find_one({"owner_id": user["id"]})
+    data = payload.model_dump()
+    if existing:
+        await db.companies.update_one({"owner_id": user["id"]},
+                                       {"$set": {**data, "updated_at": iso(now_utc())}})
+        await audit(existing["id"], user["id"], "COMPANY_UPDATED", "company", existing["id"], request)
+        company = await db.companies.find_one({"owner_id": user["id"]})
+    else:
+        cid = new_id()
+        doc = {"id": cid, "owner_id": user["id"], **data,
+               "created_at": iso(now_utc()), "updated_at": iso(now_utc())}
+        await db.companies.insert_one(doc)
+        await audit(cid, user["id"], "COMPANY_CREATED", "company", cid, request)
+        company = doc
+    return strip_id(company)
+
+
+@api.get("/company")
+async def get_my_company(user: dict = Depends(get_current_user)):
+    company = await db.companies.find_one({"owner_id": user["id"]})
+    if not company:
+        return None
+    return strip_id(company)
+
+
+# ---------- Clients ----------
+@api.get("/clients")
+async def list_clients(q: str = "", company: dict = Depends(get_company)):
+    query = {"company_id": company["id"]}
+    if q:
+        rx = re.compile(re.escape(q), re.IGNORECASE)
+        query["$or"] = [{"name": rx}, {"document": rx}, {"email": rx}]
+    docs = await db.clients.find(query).sort("created_at", -1).to_list(1000)
+    return [strip_id(d) for d in docs]
+
+
+@api.post("/clients")
+async def create_client(payload: ClientIn, request: Request,
+                        user: dict = Depends(get_current_user),
+                        company: dict = Depends(get_company)):
+    cid = new_id()
+    doc = {"id": cid, "company_id": company["id"], **payload.model_dump(),
+           "created_at": iso(now_utc()), "updated_at": iso(now_utc())}
+    await db.clients.insert_one(doc)
+    await audit(company["id"], user["id"], "CLIENT_CREATED", "client", cid, request)
+    return strip_id(doc)
+
+
+@api.put("/clients/{cid}")
+async def update_client(cid: str, payload: ClientIn, request: Request,
+                        user: dict = Depends(get_current_user),
+                        company: dict = Depends(get_company)):
+    r = await db.clients.update_one({"id": cid, "company_id": company["id"]},
+                                     {"$set": {**payload.model_dump(), "updated_at": iso(now_utc())}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Cliente não encontrado")
+    await audit(company["id"], user["id"], "CLIENT_UPDATED", "client", cid, request)
+    doc = await db.clients.find_one({"id": cid})
+    return strip_id(doc)
+
+
+@api.delete("/clients/{cid}")
+async def delete_client(cid: str, request: Request,
+                        user: dict = Depends(get_current_user),
+                        company: dict = Depends(get_company)):
+    r = await db.clients.delete_one({"id": cid, "company_id": company["id"]})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Cliente não encontrado")
+    await audit(company["id"], user["id"], "CLIENT_DELETED", "client", cid, request)
+    return {"ok": True}
+
+
+# ---------- Products ----------
+@api.get("/products")
+async def list_products(q: str = "", company: dict = Depends(get_company)):
+    query = {"company_id": company["id"]}
+    if q:
+        rx = re.compile(re.escape(q), re.IGNORECASE)
+        query["$or"] = [{"name": rx}, {"sku": rx}, {"description": rx}]
+    docs = await db.products.find(query).sort("name", 1).to_list(1000)
+    return [strip_id(d) for d in docs]
+
+
+@api.post("/products")
+async def create_product(payload: ProductIn, request: Request,
+                         user: dict = Depends(get_current_user),
+                         company: dict = Depends(get_company)):
+    pid = new_id()
+    doc = {"id": pid, "company_id": company["id"], **payload.model_dump(),
+           "created_at": iso(now_utc()), "updated_at": iso(now_utc())}
+    await db.products.insert_one(doc)
+    await audit(company["id"], user["id"], "PRODUCT_CREATED", "product", pid, request)
+    return strip_id(doc)
+
+
+@api.put("/products/{pid}")
+async def update_product(pid: str, payload: ProductIn,
+                         user: dict = Depends(get_current_user),
+                         company: dict = Depends(get_company)):
+    r = await db.products.update_one({"id": pid, "company_id": company["id"]},
+                                      {"$set": {**payload.model_dump(), "updated_at": iso(now_utc())}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Produto não encontrado")
+    doc = await db.products.find_one({"id": pid})
+    return strip_id(doc)
+
+
+@api.delete("/products/{pid}")
+async def delete_product(pid: str, company: dict = Depends(get_company)):
+    r = await db.products.delete_one({"id": pid, "company_id": company["id"]})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Produto não encontrado")
+    return {"ok": True}
+
+
+# ---------- Services ----------
+@api.get("/services")
+async def list_services(q: str = "", company: dict = Depends(get_company)):
+    query = {"company_id": company["id"]}
+    if q:
+        rx = re.compile(re.escape(q), re.IGNORECASE)
+        query["$or"] = [{"name": rx}, {"description": rx}]
+    docs = await db.services.find(query).sort("name", 1).to_list(1000)
+    return [strip_id(d) for d in docs]
+
+
+@api.post("/services")
+async def create_service(payload: ServiceIn,
+                         user: dict = Depends(get_current_user),
+                         company: dict = Depends(get_company)):
+    sid = new_id()
+    doc = {"id": sid, "company_id": company["id"], **payload.model_dump(),
+           "created_at": iso(now_utc()), "updated_at": iso(now_utc())}
+    await db.services.insert_one(doc)
+    return strip_id(doc)
+
+
+@api.put("/services/{sid}")
+async def update_service(sid: str, payload: ServiceIn, company: dict = Depends(get_company)):
+    r = await db.services.update_one({"id": sid, "company_id": company["id"]},
+                                      {"$set": {**payload.model_dump(), "updated_at": iso(now_utc())}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Serviço não encontrado")
+    doc = await db.services.find_one({"id": sid})
+    return strip_id(doc)
+
+
+@api.delete("/services/{sid}")
+async def delete_service(sid: str, company: dict = Depends(get_company)):
+    r = await db.services.delete_one({"id": sid, "company_id": company["id"]})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Serviço não encontrado")
+    return {"ok": True}
+
+
+# ---------- Quotes ----------
+def calc_totals(items: List[dict], discount: float, discount_type: str) -> dict:
+    subtotal = sum((it["quantity"] * it["unit_price"]) for it in items)
+    if discount_type == "percent":
+        disc_val = subtotal * (discount / 100.0)
+    else:
+        disc_val = discount
+    total = max(0.0, subtotal - disc_val)
+    return {"subtotal": round(subtotal, 2), "discount_value": round(disc_val, 2), "total": round(total, 2)}
+
+
+async def get_usage_count(company_id: str) -> int:
+    start, end = month_period()
+    count = await db.quote_usage.count_documents({
+        "company_id": company_id,
+        "billing_period_start": iso(start),
+        "event_type": "QUOTE_CREATED",
+    })
+    return count
+
+
+async def next_quote_number(company_id: str) -> str:
+    year = now_utc().year
+    prefix = f"{year}-"
+    latest = await db.quotes.find({"company_id": company_id, "number": {"$regex": f"^{prefix}"}})\
+                            .sort("number", -1).limit(1).to_list(1)
+    if latest:
+        try:
+            n = int(latest[0]["number"].split("-")[1]) + 1
+        except Exception:
+            n = 1
+    else:
+        n = 1
+    return f"{prefix}{n:04d}"
+
+
+async def check_free_limit(user: dict, company: dict):
+    if user.get("plan") == "PROFESSIONAL":
+        return
+    used = await get_usage_count(company["id"])
+    if used >= FREE_QUOTE_LIMIT:
+        raise HTTPException(402, f"Limite atingido: {used}/{FREE_QUOTE_LIMIT} orçamentos deste mês. Faça upgrade para o Profissional.")
+
+
+@api.get("/quotes/usage")
+async def quotes_usage(user: dict = Depends(get_current_user), company: dict = Depends(get_company)):
+    used = await get_usage_count(company["id"])
+    start, end = month_period()
+    return {
+        "used": used,
+        "limit": FREE_QUOTE_LIMIT if user.get("plan") != "PROFESSIONAL" else None,
+        "plan": user.get("plan", "FREE"),
+        "period_start": iso(start),
+        "period_end": iso(end),
+        "blocked": user.get("plan") != "PROFESSIONAL" and used >= FREE_QUOTE_LIMIT,
+    }
+
+
+@api.get("/quotes")
+async def list_quotes(status: str = "", q: str = "", company: dict = Depends(get_company)):
+    query = {"company_id": company["id"]}
+    if status:
+        query["status"] = status
+    if q:
+        rx = re.compile(re.escape(q), re.IGNORECASE)
+        query["$or"] = [{"number": rx}, {"client_name": rx}]
+    docs = await db.quotes.find(query).sort("created_at", -1).to_list(500)
+    # auto-expire
+    today = now_utc().date().isoformat()
+    result = []
+    for d in docs:
+        strip_id(d)
+        if d.get("expiration_date") and d["expiration_date"] < today and d["status"] in ("ENVIADO", "VISUALIZADO", "AGUARDANDO_APROVACAO"):
+            d["status"] = "EXPIRADO"
+            await db.quotes.update_one({"id": d["id"]}, {"$set": {"status": "EXPIRADO"}})
+        result.append(d)
+    return result
+
+
+async def _build_quote_doc(payload: QuoteIn, company: dict) -> dict:
+    items = []
+    for it in payload.items:
+        d = it.model_dump()
+        d["total"] = round(d["quantity"] * d["unit_price"], 2)
+        items.append(d)
+    totals = calc_totals(items, payload.discount, payload.discount_type)
+    client_name = ""
+    if payload.client_id:
+        cl = await db.clients.find_one({"id": payload.client_id, "company_id": company["id"]})
+        client_name = cl["name"] if cl else ""
+    return {"items": items, "totals": totals, "client_name": client_name}
+
+
+@api.post("/quotes")
+async def create_quote(payload: QuoteIn, request: Request,
+                       user: dict = Depends(get_current_user),
+                       company: dict = Depends(get_company)):
+    await check_free_limit(user, company)
+    built = await _build_quote_doc(payload, company)
+    qid = new_id()
+    number = await next_quote_number(company["id"])
+    token = secrets.token_urlsafe(24)
+    start, end = month_period()
+    doc = {
+        "id": qid,
+        "company_id": company["id"],
+        "client_id": payload.client_id,
+        "client_name": built["client_name"],
+        "number": number,
+        "status": "RASCUNHO",
+        "date": payload.date or now_utc().date().isoformat(),
+        "expiration_date": payload.expiration_date,
+        "items": built["items"],
+        "subtotal": built["totals"]["subtotal"],
+        "discount": payload.discount,
+        "discount_type": payload.discount_type,
+        "discount_value": built["totals"]["discount_value"],
+        "total": built["totals"]["total"],
+        "payment_method": payload.payment_method,
+        "delivery_deadline": payload.delivery_deadline,
+        "notes": payload.notes,
+        "terms": payload.terms,
+        "public_token": token,
+        "orientation": payload.orientation,
+        "template_id": payload.template_id,
+        "views": [],
+        "created_at": iso(now_utc()),
+        "updated_at": iso(now_utc()),
+    }
+    await db.quotes.insert_one(doc)
+    await db.quote_usage.insert_one({
+        "id": new_id(), "company_id": company["id"], "quote_id": qid,
+        "event_type": "QUOTE_CREATED",
+        "billing_period_start": iso(start), "billing_period_end": iso(end),
+        "created_at": iso(now_utc()),
+    })
+    await audit(company["id"], user["id"], "QUOTE_CREATED", "quote", qid, request)
+    return strip_id(doc)
+
+
+@api.get("/quotes/{qid}")
+async def get_quote(qid: str, company: dict = Depends(get_company)):
+    doc = await db.quotes.find_one({"id": qid, "company_id": company["id"]})
+    if not doc:
+        raise HTTPException(404, "Orçamento não encontrado")
+    return strip_id(doc)
+
+
+@api.put("/quotes/{qid}")
+async def update_quote(qid: str, payload: QuoteIn, request: Request,
+                       user: dict = Depends(get_current_user),
+                       company: dict = Depends(get_company)):
+    existing = await db.quotes.find_one({"id": qid, "company_id": company["id"]})
+    if not existing:
+        raise HTTPException(404, "Orçamento não encontrado")
+    if existing["status"] in ("APROVADO", "ASSINADO"):
+        raise HTTPException(400, "Não é possível editar orçamento aprovado/assinado")
+    built = await _build_quote_doc(payload, company)
+    update = {
+        "client_id": payload.client_id,
+        "client_name": built["client_name"],
+        "date": payload.date or existing["date"],
+        "expiration_date": payload.expiration_date,
+        "items": built["items"],
+        "subtotal": built["totals"]["subtotal"],
+        "discount": payload.discount,
+        "discount_type": payload.discount_type,
+        "discount_value": built["totals"]["discount_value"],
+        "total": built["totals"]["total"],
+        "payment_method": payload.payment_method,
+        "delivery_deadline": payload.delivery_deadline,
+        "notes": payload.notes,
+        "terms": payload.terms,
+        "orientation": payload.orientation,
+        "updated_at": iso(now_utc()),
+    }
+    await db.quotes.update_one({"id": qid}, {"$set": update})
+    await audit(company["id"], user["id"], "QUOTE_UPDATED", "quote", qid, request)
+    doc = await db.quotes.find_one({"id": qid})
+    return strip_id(doc)
+
+
+@api.post("/quotes/{qid}/status")
+async def change_status(qid: str, body: dict, request: Request,
+                        user: dict = Depends(get_current_user),
+                        company: dict = Depends(get_company)):
+    allowed = {"RASCUNHO", "ENVIADO", "CANCELADO"}
+    new_status = body.get("status")
+    if new_status not in allowed:
+        raise HTTPException(400, "Status inválido")
+    existing = await db.quotes.find_one({"id": qid, "company_id": company["id"]})
+    if not existing:
+        raise HTTPException(404, "Orçamento não encontrado")
+    await db.quotes.update_one({"id": qid}, {"$set": {"status": new_status, "updated_at": iso(now_utc())}})
+    await audit(company["id"], user["id"], f"QUOTE_STATUS_{new_status}", "quote", qid, request)
+    return {"ok": True, "status": new_status}
+
+
+@api.post("/quotes/{qid}/duplicate")
+async def duplicate_quote(qid: str, request: Request,
+                          user: dict = Depends(get_current_user),
+                          company: dict = Depends(get_company)):
+    await check_free_limit(user, company)
+    src = await db.quotes.find_one({"id": qid, "company_id": company["id"]})
+    if not src:
+        raise HTTPException(404, "Orçamento não encontrado")
+    new_qid = new_id()
+    number = await next_quote_number(company["id"])
+    token = secrets.token_urlsafe(24)
+    start, end = month_period()
+    doc = {**strip_id(dict(src)), "id": new_qid, "number": number,
+           "public_token": token, "status": "RASCUNHO", "views": [],
+           "date": now_utc().date().isoformat(),
+           "created_at": iso(now_utc()), "updated_at": iso(now_utc())}
+    await db.quotes.insert_one(doc)
+    await db.quote_usage.insert_one({
+        "id": new_id(), "company_id": company["id"], "quote_id": new_qid,
+        "event_type": "QUOTE_CREATED",
+        "billing_period_start": iso(start), "billing_period_end": iso(end),
+        "created_at": iso(now_utc()),
+    })
+    await audit(company["id"], user["id"], "QUOTE_DUPLICATED", "quote", new_qid, request)
+    return strip_id(doc)
+
+
+@api.delete("/quotes/{qid}")
+async def delete_quote(qid: str, request: Request,
+                       user: dict = Depends(get_current_user),
+                       company: dict = Depends(get_company)):
+    r = await db.quotes.delete_one({"id": qid, "company_id": company["id"]})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Orçamento não encontrado")
+    # Note: does NOT return usage credit (rule #26)
+    await audit(company["id"], user["id"], "QUOTE_DELETED", "quote", qid, request)
+    return {"ok": True}
+
+
+@api.get("/quotes/{qid}/pdf")
+async def quote_pdf(qid: str, user: dict = Depends(get_current_user),
+                    company: dict = Depends(get_company)):
+    quote = await db.quotes.find_one({"id": qid, "company_id": company["id"]})
+    if not quote:
+        raise HTTPException(404, "Orçamento não encontrado")
+    strip_id(quote)
+    client = None
+    if quote.get("client_id"):
+        client = await db.clients.find_one({"id": quote["client_id"]})
+        if client:
+            strip_id(client)
+    signature = await db.signatures.find_one({"quote_id": qid})
+    if signature:
+        strip_id(signature)
+    watermark = user.get("plan") != "PROFESSIONAL"
+    pdf_bytes = build_quote_pdf(quote, company, client, signature, watermark)
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf",
+                              headers={"Content-Disposition": f"inline; filename=orcamento-{quote['number']}.pdf"})
+
+
+# ---------- Public quote (no auth) ----------
+@api.get("/public/quote/{token}")
+async def public_quote(token: str, request: Request):
+    quote = await db.quotes.find_one({"public_token": token})
+    if not quote:
+        raise HTTPException(404, "Orçamento não encontrado")
+    strip_id(quote)
+    # register view
+    today = now_utc().date().isoformat()
+    if quote.get("expiration_date") and quote["expiration_date"] < today and quote["status"] in ("ENVIADO", "VISUALIZADO"):
+        quote["status"] = "EXPIRADO"
+        await db.quotes.update_one({"id": quote["id"]}, {"$set": {"status": "EXPIRADO"}})
+    else:
+        if quote["status"] == "ENVIADO":
+            await db.quotes.update_one({"id": quote["id"]},
+                                        {"$set": {"status": "VISUALIZADO"}})
+            quote["status"] = "VISUALIZADO"
+        await db.quotes.update_one({"id": quote["id"]}, {"$push": {"views": {
+            "at": iso(now_utc()),
+            "ip": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        }}})
+    company = await db.companies.find_one({"id": quote["company_id"]})
+    if company:
+        strip_id(company)
+        # Do not leak owner_id
+        company.pop("owner_id", None)
+    client = None
+    if quote.get("client_id"):
+        client = await db.clients.find_one({"id": quote["client_id"]})
+        if client:
+            strip_id(client)
+    signature = await db.signatures.find_one({"quote_id": quote["id"]})
+    if signature:
+        strip_id(signature)
+    owner = await db.users.find_one({"id": company["owner_id"]} if company and "owner_id" in company else {"id": "__none__"})
+    is_pro = False
+    if not owner:
+        owner_user = await db.users.find_one({"id": (await db.companies.find_one({"id": quote["company_id"]})).get("owner_id")})
+        is_pro = owner_user and owner_user.get("plan") == "PROFESSIONAL"
+    return {"quote": quote, "company": company, "client": client, "signature": signature, "watermark": not is_pro}
+
+
+@api.post("/public/quote/{token}/approve")
+async def public_approve(token: str, request: Request):
+    quote = await db.quotes.find_one({"public_token": token})
+    if not quote:
+        raise HTTPException(404, "Orçamento não encontrado")
+    today = now_utc().date().isoformat()
+    if quote.get("expiration_date") and quote["expiration_date"] < today:
+        raise HTTPException(400, "Este orçamento expirou.")
+    await db.quotes.update_one({"id": quote["id"]}, {"$set": {
+        "status": "APROVADO", "approved_at": iso(now_utc()),
+    }})
+    await audit(quote["company_id"], "public", "QUOTE_APPROVED", "quote", quote["id"], request)
+    return {"ok": True}
+
+
+@api.post("/public/quote/{token}/sign")
+async def public_sign(token: str, payload: SignatureIn, request: Request):
+    quote = await db.quotes.find_one({"public_token": token})
+    if not quote:
+        raise HTTPException(404, "Orçamento não encontrado")
+    today = now_utc().date().isoformat()
+    if quote.get("expiration_date") and quote["expiration_date"] < today:
+        raise HTTPException(400, "Este orçamento expirou.")
+    sig = {
+        "id": new_id(),
+        "quote_id": quote["id"],
+        "signer_name": payload.signer_name,
+        "signature_data": payload.signature_data,
+        "approved_at": quote.get("approved_at") or iso(now_utc()),
+        "signed_at": iso(now_utc()),
+        "ip": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"),
+        "created_at": iso(now_utc()),
+    }
+    await db.signatures.replace_one({"quote_id": quote["id"]}, sig, upsert=True)
+    await db.quotes.update_one({"id": quote["id"]}, {"$set": {"status": "ASSINADO"}})
+    await audit(quote["company_id"], "public", "QUOTE_SIGNED", "quote", quote["id"], request)
+    return {"ok": True}
+
+
+@api.get("/public/quote/{token}/pdf")
+async def public_pdf(token: str):
+    quote = await db.quotes.find_one({"public_token": token})
+    if not quote:
+        raise HTTPException(404, "Orçamento não encontrado")
+    strip_id(quote)
+    company = await db.companies.find_one({"id": quote["company_id"]})
+    if company:
+        strip_id(company)
+        owner_user = await db.users.find_one({"id": company.get("owner_id")})
+        is_pro = owner_user and owner_user.get("plan") == "PROFESSIONAL"
+        company.pop("owner_id", None)
+    else:
+        is_pro = False
+    client = None
+    if quote.get("client_id"):
+        client = await db.clients.find_one({"id": quote["client_id"]})
+        if client:
+            strip_id(client)
+    signature = await db.signatures.find_one({"quote_id": quote["id"]})
+    if signature:
+        strip_id(signature)
+    pdf_bytes = build_quote_pdf(quote, company, client, signature, watermark=not is_pro)
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf",
+                              headers={"Content-Disposition": f"inline; filename=orcamento-{quote['number']}.pdf"})
+
+
+# ---------- Receipts (Professional only) ----------
+@api.get("/receipts")
+async def list_receipts(user: dict = Depends(get_current_user), company: dict = Depends(get_company)):
+    if user.get("plan") != "PROFESSIONAL":
+        raise HTTPException(402, "Recibos disponíveis somente no plano Profissional")
+    docs = await db.receipts.find({"company_id": company["id"]}).sort("created_at", -1).to_list(500)
+    return [strip_id(d) for d in docs]
+
+
+@api.post("/receipts")
+async def create_receipt(payload: ReceiptIn, request: Request,
+                         user: dict = Depends(get_current_user),
+                         company: dict = Depends(get_company)):
+    if user.get("plan") != "PROFESSIONAL":
+        raise HTTPException(402, "Recibos disponíveis somente no plano Profissional")
+    year = now_utc().year
+    prefix = f"R-{year}-"
+    latest = await db.receipts.find({"company_id": company["id"], "number": {"$regex": f"^{prefix}"}})\
+                                .sort("number", -1).limit(1).to_list(1)
+    if latest:
+        try:
+            n = int(latest[0]["number"].split("-")[2]) + 1
+        except Exception:
+            n = 1
+    else:
+        n = 1
+    number = f"{prefix}{n:04d}"
+    rid = new_id()
+    doc = {"id": rid, "company_id": company["id"], "number": number, **payload.model_dump(),
+           "payment_date": payload.payment_date or now_utc().date().isoformat(),
+           "created_at": iso(now_utc())}
+    await db.receipts.insert_one(doc)
+    await audit(company["id"], user["id"], "RECEIPT_CREATED", "receipt", rid, request)
+    return strip_id(doc)
+
+
+@api.get("/receipts/{rid}/pdf")
+async def receipt_pdf(rid: str, user: dict = Depends(get_current_user), company: dict = Depends(get_company)):
+    if user.get("plan") != "PROFESSIONAL":
+        raise HTTPException(402, "Recibos disponíveis somente no plano Profissional")
+    receipt = await db.receipts.find_one({"id": rid, "company_id": company["id"]})
+    if not receipt:
+        raise HTTPException(404, "Recibo não encontrado")
+    strip_id(receipt)
+    client = await db.clients.find_one({"id": receipt["client_id"]})
+    if client:
+        strip_id(client)
+    pdf = build_receipt_pdf(receipt, company, client)
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
+                              headers={"Content-Disposition": f"inline; filename=recibo-{receipt['number']}.pdf"})
+
+
+# ---------- Plan / Billing ----------
+@api.get("/plan")
+async def get_plan(user: dict = Depends(get_current_user)):
+    return {
+        "plan": user.get("plan", "FREE"),
+        "prices": {"monthly": PRO_MONTHLY_PRICE, "annual": PRO_ANNUAL_PRICE},
+        "free_limit": FREE_QUOTE_LIMIT,
+    }
+
+
+@api.post("/plan/upgrade")
+async def upgrade_plan(request: Request, user: dict = Depends(get_current_user)):
+    """Mock upgrade — in production this would be triggered by billing webhook."""
+    await db.users.update_one({"id": user["id"]}, {"$set": {"plan": "PROFESSIONAL"}})
+    company = await db.companies.find_one({"owner_id": user["id"]})
+    if company:
+        await audit(company["id"], user["id"], "PLAN_UPGRADED", "user", user["id"], request,
+                    metadata={"to": "PROFESSIONAL"})
+    return {"ok": True, "plan": "PROFESSIONAL"}
+
+
+@api.post("/plan/downgrade")
+async def downgrade_plan(request: Request, user: dict = Depends(get_current_user)):
+    await db.users.update_one({"id": user["id"]}, {"$set": {"plan": "FREE"}})
+    company = await db.companies.find_one({"owner_id": user["id"]})
+    if company:
+        await audit(company["id"], user["id"], "PLAN_DOWNGRADED", "user", user["id"], request,
+                    metadata={"to": "FREE"})
+    return {"ok": True, "plan": "FREE"}
+
+
+# ---------- Admin ----------
+@api.get("/admin/metrics")
+async def admin_metrics(admin: dict = Depends(get_admin)):
+    total_users = await db.users.count_documents({})
+    total_companies = await db.companies.count_documents({})
+    total_quotes = await db.quotes.count_documents({})
+    approved = await db.quotes.count_documents({"status": {"$in": ["APROVADO", "ASSINADO"]}})
+    pro_users = await db.users.count_documents({"plan": "PROFESSIONAL"})
+    mrr = pro_users * PRO_MONTHLY_PRICE
+    return {
+        "users": total_users, "companies": total_companies,
+        "quotes": total_quotes, "quotes_approved": approved,
+        "pro_users": pro_users, "mrr": round(mrr, 2), "arr": round(mrr * 12, 2),
+        "conversion_rate": round((pro_users / total_users * 100) if total_users else 0, 2),
+    }
+
+
+@api.get("/admin/users")
+async def admin_users(admin: dict = Depends(get_admin)):
+    docs = await db.users.find({}, {"password_hash": 0}).sort("created_at", -1).to_list(500)
+    return [strip_id(d) for d in docs]
+
+
+@api.get("/admin/audit")
+async def admin_audit(admin: dict = Depends(get_admin), limit: int = 100):
+    docs = await db.audit_logs.find({}).sort("created_at", -1).limit(limit).to_list(limit)
+    return [strip_id(d) for d in docs]
+
+
+# ---------- Root ----------
+@api.get("/")
+async def root():
+    return {"app": "OrçaNext", "slogan": "Crie. Envie. Aprove. Receba."}
+
+
+# Mount router + CORS
+app.include_router(api)
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    client.close()

@@ -1,0 +1,146 @@
+{
+  "theme": "Light Theme Only",
+  "archetype": "SWISS & HIGH-CONTRAST (Modified for #00AD02)",
+  "brand_identity": {
+    "name": "OrçaNext",
+    "slogan": "Crie. Envie. Aprove. Receba.",
+    "secondary_slogan": "Do orçamento ao fechamento."
+  },
+  "typography": {
+    "headings": {
+      "font": "Outfit, sans-serif",
+      "classes": "font-sans tracking-tight text-black",
+      "usage": "Use for all H1, H2, H3, and heavy typographic elements."
+    },
+    "body": {
+      "font": "Manrope, sans-serif",
+      "classes": "font-sans leading-relaxed text-zinc-600",
+      "usage": "Use for paragraphs, descriptions, input values, and standard text."
+    },
+    "rules": [
+      "DO NOT use Inter or Roboto.",
+      "H1 (Hero): text-5xl sm:text-6xl font-black tracking-tighter text-black.",
+      "Overlines/Labels: text-xs uppercase tracking-[0.2em] font-bold text-zinc-500."
+    ]
+  },
+  "colors": {
+    "primary": "#00AD02",
+    "primary_hover": "#008A02",
+    "black": "#000000",
+    "white": "#FFFFFF",
+    "neutrals": {
+      "zinc_50": "#fafafa",
+      "zinc_100": "#f4f4f5",
+      "zinc_200": "#e4e4e7",
+      "zinc_800": "#27272a",
+      "zinc_900": "#18181b"
+    },
+    "status": {
+      "draft": "bg-zinc-100 text-zinc-800",
+      "sent": "bg-black text-white",
+      "viewed": "bg-zinc-200 text-black",
+      "approved": "bg-[#00AD02]/10 text-[#00AD02]",
+      "signed": "bg-[#00AD02] text-white"
+    },
+    "forbidden": [
+      "blue", "purple", "orange", "pink", "gradients", "neon", "transparent backgrounds over images"
+    ]
+  },
+  "visual_enhancers": {
+    "surfaces": {
+      "cards": "bg-white border border-zinc-200 rounded-xl shadow-sm",
+      "glass": "bg-white/80 backdrop-blur-xl border-b border-zinc-200",
+      "dashboard_bg": "bg-zinc-50"
+    },
+    "borders": "Always use 1px solid border-zinc-200 for structure. No soft shadows everywhere."
+  },
+  "grids_and_layouts": {
+    "bento_grid": "For the 7 Benefits: use md:grid-cols-4. 1 hero card (col-span-2 row-span-2), standard cards (col-span-1), wide cards (col-span-2). Gap-6.",
+    "spacing": "Generous. Use p-8 to p-16 for sections. Dashboard containers must have p-6.",
+    "hero": "Asymmetric layout. Heavy text on the left, overlapping product UI mockups on the right.",
+    "dashboard": "Sidebar (w-64) + Main Content. Mobile-first responsive with hamburger for sidebar."
+  },
+  "components": [
+    {
+      "name": "Button",
+      "path": "src/components/ui/button.js",
+      "instructions": "Solid #00AD02 background for primary, text-white. Sharp rounded-md. Hover state: bg-[#008A02] text-white."
+    },
+    {
+      "name": "Progress Bar",
+      "path": "src/components/ui/progress.js",
+      "instructions": "Use #00AD02 for the indicator. Background zinc-200. Used for the 37/50 usage counter."
+    },
+    {
+      "name": "Badge",
+      "path": "src/components/ui/badge.js",
+      "instructions": "Flat design. No rounded-full pill shapes, use rounded-md. Colors based on the Status object."
+    }
+  ],
+  "motion": {
+    "interactions": "Hover states must translate-y-[-2px] with subtle shadow change.",
+    "transitions": "transition-all duration-200 ease-in-out. DO NOT use generic 'transition: all' in CSS files. Apply Tailwind classes.",
+    "entrance": "Staggered fade-up for list items in the dashboard."
+  },
+  "accessibility": {
+    "contrast": "Ensure white text on #00AD02 has minimum 3:1 contrast for large text. Black on white for body.",
+    "focus": "focus-visible:ring-2 focus-visible:ring-[#00AD02] focus-visible:ring-offset-2",
+    "testing": "All interactive elements MUST include a data-testid attribute."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "Hero / Dashboard Mockup Backdrop",
+        "url": "https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNTl8MHwxfHNlYXJjaHwxfHxmcmVlbGFuY2VyJTIwd29ya2luZyUyMGxhcHRvcHxlbnwwfHx8fDE3ODY1MDE4NTB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Person working on a laptop, professional modern."
+      },
+      {
+        "category": "How It Works / Context",
+        "url": "https://images.unsplash.com/photo-1449247709967-d4461a6a6103?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBvZmZpY2UlMjBkZXNrJTIwbWluaW1hbHxlbnwwfHx8fDE3ODY1MDE4NTB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Minimal white office desk, aligns with clean brand."
+      },
+      {
+        "category": "Testimonial 1 / Avatar",
+        "url": "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwzfHxzbWlsaW5nJTIwcHJvZmVzc2lvbmFsJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzg2NTAxODUwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Smiling professional woman."
+      },
+      {
+        "category": "Testimonial 2 / Avatar",
+        "url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwyfHxzbWlsaW5nJTIwcHJvZmVzc2lvbmFsJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzg2NTAxODUwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Close up smiling woman."
+      }
+    ],
+    "icons": "Use lucide-react. Phosphor Icons (@phosphor-icons/react) optional if needing duotone."
+  },
+  "3d_libraries": {
+    "recommendation": "Not recommended for this specific project. Keep the focus strictly 2D, clean, and high-performance to match the 'minimalist, professional, reliable' requirement. Use Framer Motion for 2D UI animations."
+  },
+  "instructions_to_main_agent": [
+    "Build a complete hybrid fullstack application using React (.js).",
+    "Landing Page ('/'): Create the Header, Hero, Problem/Solution, Flow (Cadastrar -> Criar -> Enviar -> Aprovar -> Assinar -> Receber), Benefits (7 cards bento), Pricing, FAQ, Testimonials, Footer.",
+    "Dashboard ('/dashboard'): Create Sidebar (Quotes, Clients, Products, Services, Receipts, My Company, My Plan).",
+    "Dashboard usage counter: Visually display '37/50' with a green progress bar in the sidebar.",
+    "Quotes List: Implement a table or card list with status badges (RASCUNHO, ENVIADO, VISUALIZADO, APROVADO, ASSINADO) using the exact color mappings.",
+    "Quote Creation: Build an inline quote editor with a search for products/services and real-time calculation.",
+    "Public Quote Page ('/quote/public'): A clean view for clients to APROVAR/ASSINAR/BAIXAR PDF, including a signature canvas placeholder.",
+    "Paywall Modal: Implement a modal that blocks quote creation when usage is 50/50, prompting upgrade.",
+    "Use only #00AD02, #000000, #FFFFFF, and neutral grays. DO NOT USE blue, purple, orange, pink, or gradients.",
+    "Ensure the design feels like a premium Swiss-style fintech: stark white backgrounds, heavy black typography, sharp green actions."
+  ],
+  "universal_guidelines": [
+    "Prioritize using pre-existing components from src/components/ui.",
+    "DO NOT apply universal transitions (e.g. `transition: all`) in CSS.",
+    "DO NOT center align the app container (.App { text-align: center; }).",
+    "Use sonner for toasts.",
+    "NEVER use placeholder image URLs like via.placeholder.com. Use the provided Unsplash URLs.",
+    "NEVER use AI emojis like 🤖🧠 for icons. Use lucide-react.",
+    "DO NOT use transparent backgrounds for components overlaid on top of content (e.g. Headers, Dropdowns)."
+  ],
+  "general_ui_ux_guidelines": [
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Buttons should have distinct hover, focus, and active states. Focus states MUST use high contrast rings.",
+    "Optical alignment over geometrical alignment (e.g., icons next to text).",
+    "Ensure contrast passes APCA/WCAG standards, especially for white text on green backgrounds (use bold/large text or adjust shade if necessary, though #00AD02 is standard)."
+  ]
+}
