@@ -213,7 +213,7 @@ function Pricing() {
             <div className="absolute -top-3 right-6"><Badge className="brand-bg text-white rounded-md">MAIS ESCOLHIDO</Badge></div>
             <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">Profissional</div>
             <div className="mt-2 flex items-baseline gap-2">
-              <div className="font-display text-5xl font-black">R$ 49,90</div>
+              <div className="font-display text-5xl font-black text-white">R$ 49,90</div>
               <div className="text-zinc-400">/mês</div>
             </div>
             <div className="text-zinc-400 mt-1">ou R$ 478,80/ano (R$ 39,90/mês)</div>
