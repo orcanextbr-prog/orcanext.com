@@ -55,6 +55,9 @@ export default function Login() {
           <Button type="submit" data-testid="login-submit" disabled={loading} className="w-full h-11 brand-bg hover:bg-[#008a02] text-white font-bold">
             {loading ? "Entrando…" : "ENTRAR"}
           </Button>
+          <div className="text-sm text-center">
+            <Link to="/forgot-password" className="text-zinc-500 hover:text-black" data-testid="login-forgot-link">Esqueci minha senha</Link>
+          </div>
           <div className="text-sm text-center text-zinc-500">
             Não tem conta? <Link to="/register" className="brand-text font-semibold" data-testid="login-to-register">Cadastre-se</Link>
           </div>

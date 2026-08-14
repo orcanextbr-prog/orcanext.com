@@ -160,6 +160,15 @@ class LoginIn(BaseModel):
     password: str
 
 
+class ForgotIn(BaseModel):
+    email: EmailStr
+
+
+class ResetIn(BaseModel):
+    token: str
+    password: str = Field(min_length=6)
+
+
 class CompanyIn(BaseModel):
     name: str
     legal_name: Optional[str] = ""
@@ -419,6 +428,83 @@ async def me(user: dict = Depends(get_current_user)):
         strip_id(company)
     # Refresh plan from user
     return {"user": user, "company": company}
+
+
+# ---------- Password reset (magic link) ----------
+import hashlib
+
+
+def _hash_token(t: str) -> str:
+    return hashlib.sha256(t.encode()).hexdigest()
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotIn, request: Request):
+    email = payload.email.lower()
+    user = await db.users.find_one({"email": email})
+    # Always respond ok to avoid user enumeration
+    if user:
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = _hash_token(raw_token)
+        expires = now_utc() + timedelta(hours=1)
+        await db.password_resets.insert_one({
+            "id": new_id(), "user_id": user["id"], "email": email,
+            "token_hash": token_hash, "expires_at": iso(expires),
+            "used": False, "created_at": iso(now_utc()),
+            "ip": request.client.host if request.client else None,
+        })
+        reset_url = f"{FRONTEND_URL}/reset-password?token={raw_token}"
+        subject = "Redefinir sua senha do OrçaNext"
+        html = (
+            '<table role="presentation" width="100%" style="background:#fafafa;padding:24px 0">'
+            '<tr><td align="center">'
+            '<table role="presentation" width="560" style="background:#fff;border:1px solid #e4e4e7;border-radius:12px;padding:32px;font-family:Arial,sans-serif;color:#18181b">'
+            '<tr><td>'
+            '<div style="font-size:12px;font-weight:700;letter-spacing:2px;color:#71717a;text-transform:uppercase">Redefinição de senha</div>'
+            f'<h1 style="margin:8px 0 16px;font-size:24px;color:#000">Olá {user.get("name","")},</h1>'
+            '<p style="margin:0 0 12px;line-height:1.6">Recebemos um pedido para redefinir a senha da sua conta no OrçaNext. Clique no botão abaixo para escolher uma nova senha. O link expira em 1 hora e pode ser usado apenas uma vez.</p>'
+            f'<p style="margin:24px 0"><a href="{reset_url}" style="display:inline-block;background:#00AD02;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:6px">REDEFINIR SENHA</a></p>'
+            '<p style="margin:16px 0 0;font-size:12px;color:#71717a">Se você não solicitou esta redefinição, ignore este e-mail — sua senha permanece a mesma.</p>'
+            '<p style="margin:16px 0 0;font-size:11px;color:#a1a1aa">OrçaNext nunca pede sua senha ou dados de cartão por e-mail.</p>'
+            '</td></tr></table></td></tr></table>')
+        try:
+            await send_email(to=email, subject=subject, html=html)
+        except Exception as e:
+            logger.error(f"Password reset email failed: {e}")
+    return {"ok": True, "message": "Se o e-mail existir, você receberá as instruções em instantes."}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(payload: ResetIn, response: Response, request: Request):
+    token_hash = _hash_token(payload.token)
+    rec = await db.password_resets.find_one({"token_hash": token_hash, "used": False})
+    if not rec:
+        raise HTTPException(400, "Link inválido ou já utilizado")
+    try:
+        exp = datetime.fromisoformat(rec["expires_at"].replace("Z", "+00:00"))
+    except Exception:
+        exp = now_utc() - timedelta(seconds=1)
+    if exp < now_utc():
+        raise HTTPException(400, "Link expirado. Solicite um novo.")
+    user = await db.users.find_one({"id": rec["user_id"]})
+    if not user:
+        raise HTTPException(400, "Usuário não encontrado")
+    await db.users.update_one({"id": user["id"]}, {"$set": {
+        "password_hash": hash_password(payload.password),
+        "password_updated_at": iso(now_utc()),
+    }})
+    await db.password_resets.update_one({"id": rec["id"]}, {"$set": {
+        "used": True, "used_at": iso(now_utc()),
+    }})
+    # Invalidate other pending resets for this user
+    await db.password_resets.update_many({"user_id": user["id"], "used": False},
+                                          {"$set": {"used": True, "used_at": iso(now_utc())}})
+    # Auto-login
+    token = create_access_token(user["id"], user["email"])
+    set_auth_cookie(response, token)
+    user.pop("password_hash", None); strip_id(user)
+    await audit(user.get("id"), user["id"], "PASSWORD_RESET", "user", user["id"], request)
+    return {"ok": True, "user": user, "token": token}
 
 
 # ---------- Company / Onboarding ----------
