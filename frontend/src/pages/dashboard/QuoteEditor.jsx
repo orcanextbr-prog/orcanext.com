@@ -10,7 +10,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, Search, Save, Send } from "lucide-react";
+import { Plus, Trash2, Search, Save, Send, Bell, BellOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 export default function QuoteEditor() {
   const { id } = useParams();
@@ -39,6 +40,8 @@ export default function QuoteEditor() {
   const [quickData, setQuickData] = useState({ name: "", price: 0, unit: "un", description: "" });
 
   const [current, setCurrent] = useState(null);
+  const [followUp, setFollowUp] = useState(true);
+  const [remindersSent, setRemindersSent] = useState(0);
 
   useEffect(() => { api.get("/clients").then((r) => setClients(r.data)); }, []);
 
@@ -58,6 +61,8 @@ export default function QuoteEditor() {
         setNotes(q.notes || "");
         setTerms(q.terms || "");
         setOrientation(q.orientation || "vertical");
+        setFollowUp(q.follow_up_enabled !== false);
+        setRemindersSent(q.reminders_sent || 0);
       }).catch((e) => toast.error(formatApiError(e.response?.data?.detail)));
     }
   }, [id]);
@@ -134,6 +139,22 @@ export default function QuoteEditor() {
   };
 
   const publicUrl = current ? `${window.location.origin}/q/${current.public_token}` : null;
+
+  const toggleFollowup = async (v) => {
+    setFollowUp(v);
+    if (!current) return;
+    try { await api.post(`/quotes/${current.id}/followup-toggle`, { enabled: v });
+      toast.success(v ? "Lembretes ativados" : "Lembretes desativados");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const sendFollowupNow = async () => {
+    if (!current) return;
+    try {
+      const r = await api.post(`/quotes/${current.id}/send-followup-now`);
+      toast.success(`Lembrete enviado para ${r.data.sent_to}`);
+      setRemindersSent(remindersSent + 1);
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   return (
     <div className="space-y-6">
@@ -240,6 +261,24 @@ export default function QuoteEditor() {
               <span className="text-3xl font-display font-black brand-text" data-testid="editor-total">{money(total)}</span>
             </div>
           </div>
+
+          {current && (
+            <div className="bg-white border border-zinc-200 rounded-xl p-5" data-testid="followup-card">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {followUp ? <Bell className="w-4 h-4 brand-text" /> : <BellOff className="w-4 h-4 text-zinc-400" />}
+                  <div className="font-display font-extrabold text-lg">Follow-up automático</div>
+                </div>
+                <Switch checked={followUp} onCheckedChange={toggleFollowup} data-testid="followup-toggle" />
+              </div>
+              <p className="text-xs text-zinc-500 mt-2">Enviamos um lembrete por e-mail ao cliente 3 dias após ele visualizar (e outro em 7 dias se não responder). Máximo 2 lembretes.</p>
+              <div className="mt-3 text-xs text-zinc-500">Lembretes enviados: <b>{remindersSent}/2</b></div>
+              <Button size="sm" variant="outline" onClick={sendFollowupNow} disabled={remindersSent >= 2}
+                      className="mt-3 w-full font-bold" data-testid="followup-send-now">
+                Enviar lembrete agora
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

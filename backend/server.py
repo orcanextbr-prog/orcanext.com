@@ -21,6 +21,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 from pdf_generator import build_quote_pdf, build_receipt_pdf
+from emailer import send_email, build_followup_html
+import asyncio
 
 # ---------- Config ----------
 JWT_SECRET = os.environ["JWT_SECRET"]
@@ -278,7 +280,90 @@ async def startup():
     elif not verify_password(admin_pw, existing["password_hash"]):
         await db.users.update_one({"email": admin_email},
                                    {"$set": {"password_hash": hash_password(admin_pw)}})
+    asyncio.create_task(followup_loop())
     logger.info("OrçaNext startup complete")
+
+
+# ---------- Follow-up scheduler ----------
+FOLLOWUP_DAYS = 3
+FOLLOWUP_SECOND_DAYS = 7
+FOLLOWUP_MAX = 2
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://invoice-pro-435.preview.emergentagent.com")
+
+
+def _money_br(v):
+    try:
+        s = f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"R$ {s}"
+    except Exception:
+        return "R$ 0,00"
+
+
+async def process_followups():
+    now = now_utc()
+    cutoff_3 = now - timedelta(days=FOLLOWUP_DAYS)
+    # Quotes visualized but not approved/signed/expired, follow_up_enabled, not too many reminders
+    async for q in db.quotes.find({
+        "status": "VISUALIZADO",
+        "follow_up_enabled": {"$ne": False},
+    }):
+        reminders_sent = q.get("reminders_sent", 0)
+        if reminders_sent >= FOLLOWUP_MAX:
+            continue
+        # check last view or last reminder date
+        last_reminder = q.get("last_reminder_at")
+        anchor = last_reminder or q.get("updated_at") or q.get("created_at")
+        try:
+            anchor_dt = datetime.fromisoformat(anchor.replace("Z", "+00:00")) if isinstance(anchor, str) else anchor
+        except Exception:
+            continue
+        days_needed = FOLLOWUP_SECOND_DAYS if reminders_sent >= 1 else FOLLOWUP_DAYS
+        if (now - anchor_dt) < timedelta(days=days_needed):
+            continue
+        # skip expired
+        if q.get("expiration_date") and q["expiration_date"] < now.date().isoformat():
+            continue
+        # global user setting
+        company = await db.companies.find_one({"id": q["company_id"]})
+        if not company:
+            continue
+        owner = await db.users.find_one({"id": company["owner_id"]})
+        if not owner or owner.get("follow_up_enabled") is False:
+            continue
+        client = await db.clients.find_one({"id": q.get("client_id")}) if q.get("client_id") else None
+        if not client or not client.get("email"):
+            continue
+        public_url = f"{FRONTEND_URL}/q/{q['public_token']}"
+        html = build_followup_html(
+            client_name=client["name"], company_name=company.get("name", "OrçaNext"),
+            quote_number=q.get("number", ""), total_str=_money_br(q.get("total", 0)),
+            public_url=public_url, reply_to=company.get("email"))
+        subject = f"Lembrete: orçamento {q.get('number','')} de {company.get('name','')}"
+        try:
+            await send_email(to=client["email"], subject=subject, html=html,
+                             reply_to=company.get("email"))
+            await db.quotes.update_one({"id": q["id"]}, {"$set": {
+                "last_reminder_at": iso(now),
+            }, "$inc": {"reminders_sent": 1}})
+            await db.followups.insert_one({
+                "id": new_id(), "quote_id": q["id"], "company_id": q["company_id"],
+                "client_email": client["email"], "sent_at": iso(now),
+                "reminder_number": reminders_sent + 1,
+            })
+            logger.info(f"Follow-up sent for quote {q.get('number')} to {client['email']}")
+        except Exception as e:
+            logger.error(f"Follow-up failed for quote {q.get('id')}: {e}")
+
+
+async def followup_loop():
+    # Wait a bit for startup, then run every hour
+    await asyncio.sleep(30)
+    while True:
+        try:
+            await process_followups()
+        except Exception as e:
+            logger.error(f"Follow-up loop error: {e}")
+        await asyncio.sleep(3600)
 
 
 # ---------- Auth ----------
@@ -972,6 +1057,67 @@ async def admin_users(admin: dict = Depends(get_admin)):
 async def admin_audit(admin: dict = Depends(get_admin), limit: int = 100):
     docs = await db.audit_logs.find({}).sort("created_at", -1).limit(limit).to_list(limit)
     return [strip_id(d) for d in docs]
+
+
+# ---------- Follow-up settings & manual send ----------
+class FollowupSettingsIn(BaseModel):
+    follow_up_enabled: bool
+
+
+@api.get("/settings/followup")
+async def get_followup_settings(user: dict = Depends(get_current_user)):
+    return {"follow_up_enabled": user.get("follow_up_enabled", True),
+            "days_first": FOLLOWUP_DAYS, "days_second": FOLLOWUP_SECOND_DAYS,
+            "max_reminders": FOLLOWUP_MAX}
+
+
+@api.put("/settings/followup")
+async def set_followup_settings(payload: FollowupSettingsIn,
+                                 user: dict = Depends(get_current_user)):
+    await db.users.update_one({"id": user["id"]},
+                               {"$set": {"follow_up_enabled": payload.follow_up_enabled}})
+    return {"ok": True, "follow_up_enabled": payload.follow_up_enabled}
+
+
+@api.post("/quotes/{qid}/followup-toggle")
+async def toggle_quote_followup(qid: str, body: dict,
+                                user: dict = Depends(get_current_user),
+                                company: dict = Depends(get_company)):
+    enabled = bool(body.get("enabled", True))
+    r = await db.quotes.update_one({"id": qid, "company_id": company["id"]},
+                                    {"$set": {"follow_up_enabled": enabled}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Orçamento não encontrado")
+    return {"ok": True, "follow_up_enabled": enabled}
+
+
+@api.post("/quotes/{qid}/send-followup-now")
+async def send_followup_now(qid: str, user: dict = Depends(get_current_user),
+                             company: dict = Depends(get_company)):
+    q = await db.quotes.find_one({"id": qid, "company_id": company["id"]})
+    if not q:
+        raise HTTPException(404, "Orçamento não encontrado")
+    if q.get("reminders_sent", 0) >= FOLLOWUP_MAX:
+        raise HTTPException(400, "Limite de lembretes atingido para este orçamento")
+    client = await db.clients.find_one({"id": q.get("client_id")}) if q.get("client_id") else None
+    if not client or not client.get("email"):
+        raise HTTPException(400, "Cliente sem e-mail cadastrado")
+    public_url = f"{FRONTEND_URL}/q/{q['public_token']}"
+    html = build_followup_html(client_name=client["name"], company_name=company.get("name", "OrçaNext"),
+                                quote_number=q.get("number", ""), total_str=_money_br(q.get("total", 0)),
+                                public_url=public_url, reply_to=company.get("email"))
+    subject = f"Lembrete: orçamento {q.get('number','')} de {company.get('name','')}"
+    try:
+        await send_email(to=client["email"], subject=subject, html=html, reply_to=company.get("email"))
+    except Exception as e:
+        raise HTTPException(502, f"Falha ao enviar e-mail: {e}")
+    await db.quotes.update_one({"id": qid}, {"$set": {"last_reminder_at": iso(now_utc())},
+                                              "$inc": {"reminders_sent": 1}})
+    await db.followups.insert_one({"id": new_id(), "quote_id": qid, "company_id": company["id"],
+                                    "client_email": client["email"], "sent_at": iso(now_utc()),
+                                    "reminder_number": q.get("reminders_sent", 0) + 1,
+                                    "manual": True})
+    return {"ok": True, "sent_to": client["email"]}
 
 
 # ---------- Root ----------

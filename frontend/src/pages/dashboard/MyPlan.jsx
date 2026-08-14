@@ -1,14 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth, formatApiError } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Check, Bell } from "lucide-react";
 
 export default function MyPlan() {
   const { user, refresh } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [followUp, setFollowUp] = useState(true);
+
+  useEffect(() => {
+    api.get("/settings/followup").then((r) => setFollowUp(r.data.follow_up_enabled));
+  }, []);
+
+  const toggleFollowUp = async (v) => {
+    setFollowUp(v);
+    try { await api.put("/settings/followup", { follow_up_enabled: v });
+      toast.success(v ? "Follow-up global ativado" : "Follow-up global desativado");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   const upgrade = async () => {
     setLoading(true);
@@ -58,6 +71,22 @@ export default function MyPlan() {
         </div>
       </div>
       <p className="mt-4 text-xs text-zinc-400">Ambiente demo: a assinatura é ativada instantaneamente sem cobrança. A arquitetura está preparada para integração com gateway (Stripe / PIX / cartão).</p>
+
+      <div className="mt-10">
+        <h2 className="font-display text-2xl font-black">Configurações</h2>
+        <div className="mt-4 bg-white border border-zinc-200 rounded-2xl p-6" data-testid="settings-followup-card">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-md brand-bg text-white flex items-center justify-center shrink-0"><Bell className="w-5 h-5" /></div>
+              <div>
+                <div className="font-display font-extrabold text-lg">Follow-up inteligente</div>
+                <p className="text-sm text-zinc-500 mt-1 max-w-lg">Enviamos automaticamente um lembrete por e-mail para clientes que visualizaram seu orçamento e não responderam em 3 dias (e outro em 7 dias). Máximo 2 lembretes por orçamento.</p>
+              </div>
+            </div>
+            <Switch checked={followUp} onCheckedChange={toggleFollowUp} data-testid="settings-followup-toggle" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
