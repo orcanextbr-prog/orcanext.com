@@ -66,9 +66,11 @@ def verify_password(pw: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(uid: str, email: str) -> str:
+def create_access_token(uid: str, email: str, impersonated_by: Optional[str] = None) -> str:
     payload = {"sub": uid, "email": email, "type": "access",
                "exp": now_utc() + timedelta(days=7)}
+    if impersonated_by:
+        payload["impersonated_by"] = impersonated_by
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
 
@@ -111,6 +113,8 @@ async def get_current_user(request: Request) -> dict:
             raise HTTPException(401, "Usuário não encontrado")
         user = strip_id(user)
         user.pop("password_hash", None)
+        if payload.get("impersonated_by"):
+            user["impersonated_by"] = payload["impersonated_by"]
         return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(401, "Sessão expirada")
@@ -126,8 +130,16 @@ async def get_company(user: dict = Depends(get_current_user)) -> dict:
 
 
 async def get_admin(user: dict = Depends(get_current_user)) -> dict:
-    if user.get("role") != "admin":
+    if user.get("role") not in ("admin", "super_admin"):
         raise HTTPException(403, "Acesso negado")
+    if user.get("blocked"):
+        raise HTTPException(403, "Conta bloqueada")
+    return user
+
+
+async def get_super_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "super_admin":
+        raise HTTPException(403, "Apenas SUPER_ADMIN")
     return user
 
 
@@ -283,7 +295,7 @@ async def startup():
     if not existing:
         await db.users.insert_one({
             "id": new_id(), "email": admin_email, "name": "OrçaNext Admin",
-            "password_hash": hash_password(admin_pw), "role": "admin",
+            "password_hash": hash_password(admin_pw), "role": "super_admin",
             "plan": "PROFESSIONAL", "created_at": iso(now_utc()),
         })
     elif not verify_password(admin_pw, existing["password_hash"]):
@@ -408,6 +420,8 @@ async def login(payload: LoginIn, response: Response):
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(401, "E-mail ou senha inválidos")
+    if user.get("blocked"):
+        raise HTTPException(403, "Conta bloqueada. Contate o suporte.")
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
     strip_id(user)
@@ -1143,6 +1157,119 @@ async def admin_users(admin: dict = Depends(get_admin)):
 async def admin_audit(admin: dict = Depends(get_admin), limit: int = 100):
     docs = await db.audit_logs.find({}).sort("created_at", -1).limit(limit).to_list(limit)
     return [strip_id(d) for d in docs]
+
+
+@api.get("/admin/companies")
+async def admin_companies(admin: dict = Depends(get_admin)):
+    docs = await db.companies.find({}).sort("created_at", -1).to_list(500)
+    result = []
+    for c in docs:
+        strip_id(c)
+        owner = await db.users.find_one({"id": c.get("owner_id")})
+        c["owner_email"] = owner["email"] if owner else None
+        c["owner_plan"] = owner["plan"] if owner else None
+        c["blocked"] = bool(owner and owner.get("blocked"))
+        c["quotes_count"] = await db.quotes.count_documents({"company_id": c["id"]})
+        c["clients_count"] = await db.clients.count_documents({"company_id": c["id"]})
+        result.append(c)
+    return result
+
+
+@api.get("/admin/quotes")
+async def admin_all_quotes(admin: dict = Depends(get_admin), status: str = "", limit: int = 200):
+    q = {"status": status} if status else {}
+    docs = await db.quotes.find(q).sort("created_at", -1).limit(limit).to_list(limit)
+    return [strip_id(d) for d in docs]
+
+
+@api.post("/admin/users/{uid}/block")
+async def admin_block(uid: str, body: dict, request: Request, admin: dict = Depends(get_admin)):
+    blocked = bool(body.get("blocked", True))
+    await db.users.update_one({"id": uid}, {"$set": {"blocked": blocked}})
+    await audit("_platform_", admin["id"], "USER_BLOCKED" if blocked else "USER_UNBLOCKED",
+                "user", uid, request, metadata={"reason": body.get("reason", "")})
+    return {"ok": True, "blocked": blocked}
+
+
+@api.post("/admin/users/{uid}/plan")
+async def admin_set_plan(uid: str, body: dict, request: Request, admin: dict = Depends(get_admin)):
+    plan = body.get("plan")
+    if plan not in ("FREE", "PROFESSIONAL"):
+        raise HTTPException(400, "Plano inválido")
+    await db.users.update_one({"id": uid}, {"$set": {"plan": plan}})
+    await audit("_platform_", admin["id"], "PLAN_CHANGED_BY_ADMIN", "user", uid, request,
+                metadata={"to": plan})
+    return {"ok": True, "plan": plan}
+
+
+@api.get("/admin/near-limit")
+async def admin_near_limit(admin: dict = Depends(get_admin)):
+    start, end = month_period()
+    pipeline = [
+        {"$match": {"event_type": "QUOTE_CREATED", "billing_period_start": iso(start)}},
+        {"$group": {"_id": "$company_id", "used": {"$sum": 1}}},
+        {"$match": {"used": {"$gte": 40}}},
+        {"$sort": {"used": -1}},
+    ]
+    rows = await db.quote_usage.aggregate(pipeline).to_list(200)
+    result = []
+    for r in rows:
+        comp = await db.companies.find_one({"id": r["_id"]})
+        if not comp:
+            continue
+        owner = await db.users.find_one({"id": comp.get("owner_id")})
+        if owner and owner.get("plan") == "PROFESSIONAL":
+            continue
+        result.append({"company_id": r["_id"], "company_name": comp.get("name"),
+                        "used": r["used"], "limit": FREE_QUOTE_LIMIT,
+                        "user_email": owner["email"] if owner else None})
+    return result
+
+
+@api.get("/admin/settings")
+async def admin_settings(admin: dict = Depends(get_admin)):
+    s = await db.platform_settings.find_one({"id": "main"}) or {}
+    return {"free_limit": s.get("free_limit", FREE_QUOTE_LIMIT),
+            "pro_monthly": s.get("pro_monthly", PRO_MONTHLY_PRICE),
+            "pro_annual": s.get("pro_annual", PRO_ANNUAL_PRICE),
+            "support_email": s.get("support_email", "suporte@orcanext.com")}
+
+
+@api.put("/admin/settings")
+async def admin_update_settings(body: dict, request: Request, admin: dict = Depends(get_super_admin)):
+    allowed = {k: v for k, v in body.items() if k in ("free_limit", "pro_monthly", "pro_annual", "support_email")}
+    allowed["id"] = "main"; allowed["updated_at"] = iso(now_utc()); allowed["updated_by"] = admin["id"]
+    await db.platform_settings.replace_one({"id": "main"}, allowed, upsert=True)
+    await audit("_platform_", admin["id"], "SETTINGS_UPDATED", "platform", "main", request, metadata=allowed)
+    return {"ok": True}
+
+
+@api.post("/admin/impersonate/{uid}")
+async def admin_impersonate(uid: str, response: Response, request: Request,
+                             admin: dict = Depends(get_super_admin)):
+    target = await db.users.find_one({"id": uid})
+    if not target:
+        raise HTTPException(404, "Usuário não encontrado")
+    token = create_access_token(target["id"], target["email"], impersonated_by=admin["id"])
+    set_auth_cookie(response, token)
+    await audit("_platform_", admin["id"], "IMPERSONATE_START", "user", uid, request,
+                metadata={"target_email": target["email"]})
+    return {"ok": True, "impersonating": {"id": target["id"], "email": target["email"]}}
+
+
+@api.post("/admin/impersonate-end")
+async def admin_impersonate_end(response: Response, request: Request,
+                                  user: dict = Depends(get_current_user)):
+    admin_id = user.get("impersonated_by")
+    if not admin_id:
+        raise HTTPException(400, "Não está em modo impersonation")
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin:
+        raise HTTPException(404, "Admin original não encontrado")
+    token = create_access_token(admin["id"], admin["email"])
+    set_auth_cookie(response, token)
+    await audit("_platform_", admin_id, "IMPERSONATE_END", "user", user["id"], request)
+    return {"ok": True}
 
 
 # ---------- Follow-up settings & manual send ----------

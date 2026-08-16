@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { FileText, Users, Package, Wrench, Receipt, Building2, CreditCard, LogOut, Menu, X, Shield } from "lucide-react";
+import { FileText, Users, Package, Wrench, Receipt, Building2, CreditCard, LogOut, Menu, X, Shield, ShieldAlert } from "lucide-react";
 
 const NavItem = ({ to, icon: I, label, testid }) => (
   <NavLink end to={to} data-testid={testid}
@@ -15,10 +15,19 @@ const NavItem = ({ to, icon: I, label, testid }) => (
 );
 
 export default function DashboardLayout() {
-  const { user, company, logout } = useAuth();
+  const { user, company, logout, refresh } = useAuth();
   const nav = useNavigate();
   const [usage, setUsage] = useState(null);
   const [open, setOpen] = useState(false);
+  const impersonating = !!user?.impersonated_by;
+
+  const endImpersonation = async () => {
+    try {
+      await api.post("/admin/impersonate-end");
+      await refresh();
+      nav("/admin");
+    } catch (e) { /* ignore */ }
+  };
 
   useEffect(() => {
     api.get("/quotes/usage").then((r) => setUsage(r.data)).catch(() => {});
@@ -44,7 +53,7 @@ export default function DashboardLayout() {
         <NavItem to="/dashboard/receipts" icon={Receipt} label="Recibos" testid="nav-receipts" />
         <NavItem to="/dashboard/company" icon={Building2} label="Minha Empresa" testid="nav-company" />
         <NavItem to="/dashboard/plan" icon={CreditCard} label="Meu Plano" testid="nav-plan" />
-        {user?.role === "admin" && <NavItem to="/admin" icon={Shield} label="Admin" testid="nav-admin" />}
+        {(user?.role === "admin" || user?.role === "super_admin") && <NavItem to="/admin" icon={Shield} label="Admin" testid="nav-admin" />}
       </nav>
 
       {usage && (
@@ -90,15 +99,30 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen flex bg-zinc-50">
-      <div className="hidden md:block">{Sidebar}</div>
+      {impersonating && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-black text-white border-b-2 border-[#00AD02]" data-testid="impersonation-banner">
+          <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldAlert className="w-4 h-4 text-[#00AD02] shrink-0" />
+              <span className="text-xs md:text-sm font-bold uppercase tracking-widest text-[#00AD02]">Modo Administrador</span>
+              <span className="text-xs md:text-sm text-zinc-300 truncate">visualizando como <b className="text-white">{user?.email}</b></span>
+            </div>
+            <Button size="sm" onClick={endImpersonation} data-testid="end-impersonation-btn"
+              className="brand-bg hover:bg-[#008a02] text-white font-bold whitespace-nowrap">
+              Sair do modo suporte
+            </Button>
+          </div>
+        </div>
+      )}
+      <div className={`hidden md:block ${impersonating ? "pt-11" : ""}`}>{Sidebar}</div>
       {open && <div className="md:hidden fixed inset-0 z-40"><div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} /><div className="absolute left-0 top-0 h-full">{Sidebar}</div></div>}
       <div className="flex-1 min-w-0">
-        <div className="md:hidden sticky top-0 z-30 bg-white border-b border-zinc-200 p-3 flex items-center justify-between">
+        <div className={`md:hidden sticky top-0 z-30 bg-white border-b border-zinc-200 p-3 flex items-center justify-between ${impersonating ? "mt-11" : ""}`}>
           <button onClick={() => setOpen(true)}><Menu className="w-5 h-5" /></button>
           <span className="font-display font-extrabold">OrçaNext</span>
           <span />
         </div>
-        <main className="p-6 md:p-8 max-w-7xl mx-auto">
+        <main className={`p-6 md:p-8 max-w-7xl mx-auto ${impersonating ? "md:pt-14" : ""}`}>
           <Outlet context={{ usage, refreshUsage: () => api.get("/quotes/usage").then((r) => setUsage(r.data)).catch(() => {}), company }} />
         </main>
       </div>

@@ -27,7 +27,7 @@ function Protected({ children, adminOnly = false }) {
     <div className="min-h-screen flex items-center justify-center text-zinc-500">Carregando…</div>
   );
   if (!user) return <Navigate to="/login" replace />;
-  if (adminOnly && user.role !== "admin") return <Navigate to="/dashboard" replace />;
+  if (adminOnly && user.role !== "admin" && user.role !== "super_admin") return <Navigate to="/dashboard" replace />;
   return children;
 }
 

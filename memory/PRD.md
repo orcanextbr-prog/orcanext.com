@@ -28,15 +28,22 @@ SaaS brasileiro multi-tenant para criar, enviar, aprovar e obter aceite eletrôn
 - Painel `/admin`: métricas (users, companies, quotes, MRR/ARR), lista de usuários, audit logs.
 - Segurança: rotas privadas via cookie, isolamento multi-tenant (foreign quote 404), admin gate 403, unauth 401.
 - Todos os elementos-chave possuem `data-testid`.
+- **Reset de senha** magic link via Resend (token uso único, expira 1h, auto-login pós reset).
+- **Admin v2** (RBAC USER/ADMIN/SUPER_ADMIN): bloquear/promover usuários, alterar plano, configurações da plataforma (`free_limit`, `pro_monthly`, `pro_annual`, `support_email`), auditoria completa, próximos do limite.
+- **Follow-up Inteligente** via Resend: lembretes automáticos para orçamentos enviados (D+3, D+7, máx 2 envios).
+- **Impersonation (Fev/2026)**: SUPER_ADMIN pode entrar em qualquer conta de usuário via botão "Entrar como" na aba Usuários. Banner preto "MODO ADMINISTRADOR" fica fixo no topo do dashboard com botão "Sair do modo suporte". Ações auditadas (`IMPERSONATE_START` / `IMPERSONATE_END`).
 
-## Test Results (iteration_1)
-Backend 100% ✓ · Frontend 100% ✓ — todos os fluxos críticos validados incluindo 50/50 block, delete sem crédito, expiração, PDF público, RBAC.
+## Test Results
+- iteration_1: Backend 100% ✓ · Frontend 100% ✓
+- Impersonation (Fev/2026): curl E2E + Playwright screenshot ✓ (login → /admin → Entrar como → banner visível → Sair → volta ao admin).
 
 ## Backlog (P1/P2)
-- P1 — Recuperação/reset de senha por e-mail (Resend).
+- P1 — **Central de Suporte**: tickets abertos pelo usuário, respondidos em `/admin/support`.
 - P1 — Integração real de billing (Stripe) com webhooks e estados ACTIVE/PAST_DUE/CANCELED.
+- P2 — Funil de conversão detalhado no Admin (Visitor → Signup → 1º Orçamento → PRO).
+- P2 — 2FA por e-mail.
 - P2 — Notificações e-mail/WhatsApp (visualizado/aprovado/próximo de expirar).
 - P2 — Personalização de modelos ilimitados + escolha de cor do PRO.
 - P2 — Página LGPD (Política de Privacidade, Termos, exportação/exclusão de dados).
-- P2 — CRM light: follow-up automático, funil de conversão.
 - P2 — Assinatura digital ICP-Brasil (integração DocuSign/GOV.BR).
+- Refactor — modularizar `server.py` (auth, admin, quotes, billing em routers separados).
