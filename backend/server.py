@@ -288,39 +288,64 @@ class SignatureIn(BaseModel):
 
 
 # ---------- Startup ----------
+@app.get("/health")
+async def health():
+    """Kubernetes liveness/readiness probe. Fast, no DB dependency so the
+    container is marked healthy as soon as the process is accepting connections."""
+    return {"status": "ok"}
+
+
+@api.get("/health")
+async def api_health():
+    return {"status": "ok"}
+
+
+async def _bootstrap_db():
+    """Create indexes + seed admin lazily so any transient Atlas hiccup doesn't
+    prevent uvicorn from binding to :8001 (which would cause Kubernetes probes
+    to see Connection refused and kill the pod)."""
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.companies.create_index("owner_id", unique=True)
+        await db.quotes.create_index([("company_id", 1), ("number", 1)], unique=True)
+        await db.quotes.create_index("public_token", unique=True)
+        await db.clients.create_index([("company_id", 1)])
+        await db.products.create_index([("company_id", 1)])
+        await db.services.create_index([("company_id", 1)])
+        await db.quote_usage.create_index([("company_id", 1), ("billing_period_start", 1)])
+        await db.stripe_webhook_events.create_index("stripe_event_id", unique=True)
+        await db.payments.create_index([("user_id", 1), ("created_at", -1)])
+        await db.payments.create_index("stripe_session_id")
+        await db.users.create_index("stripe_customer_id", sparse=True)
+        await db.support_tickets.create_index([("user_id", 1), ("updated_at", -1)])
+        await db.support_tickets.create_index("number", unique=True)
+        await db.support_tickets.create_index([("status", 1), ("updated_at", -1)])
+        await db.support_messages.create_index([("ticket_id", 1), ("created_at", 1)])
+    except Exception as e:
+        logger.warning("Index bootstrap warning: %s", e)
+    try:
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@orcanext.com").lower()
+        admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@2026")
+        existing = await db.users.find_one({"email": admin_email})
+        if not existing:
+            await db.users.insert_one({
+                "id": new_id(), "email": admin_email, "name": "OrçaNext Admin",
+                "password_hash": hash_password(admin_pw), "role": "super_admin",
+                "plan": "PROFESSIONAL", "created_at": iso(now_utc()),
+            })
+        elif not verify_password(admin_pw, existing["password_hash"]):
+            await db.users.update_one({"email": admin_email},
+                                       {"$set": {"password_hash": hash_password(admin_pw)}})
+    except Exception as e:
+        logger.warning("Admin seed warning: %s", e)
+
+
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email", unique=True)
-    await db.companies.create_index("owner_id", unique=True)
-    await db.quotes.create_index([("company_id", 1), ("number", 1)], unique=True)
-    await db.quotes.create_index("public_token", unique=True)
-    await db.clients.create_index([("company_id", 1)])
-    await db.products.create_index([("company_id", 1)])
-    await db.services.create_index([("company_id", 1)])
-    await db.quote_usage.create_index([("company_id", 1), ("billing_period_start", 1)])
-    await db.stripe_webhook_events.create_index("stripe_event_id", unique=True)
-    await db.payments.create_index([("user_id", 1), ("created_at", -1)])
-    await db.payments.create_index("stripe_session_id")
-    await db.users.create_index("stripe_customer_id", sparse=True)
-    await db.support_tickets.create_index([("user_id", 1), ("updated_at", -1)])
-    await db.support_tickets.create_index("number", unique=True)
-    await db.support_tickets.create_index([("status", 1), ("updated_at", -1)])
-    await db.support_messages.create_index([("ticket_id", 1), ("created_at", 1)])
-    # Seed admin
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@orcanext.com").lower()
-    admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@2026")
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({
-            "id": new_id(), "email": admin_email, "name": "OrçaNext Admin",
-            "password_hash": hash_password(admin_pw), "role": "super_admin",
-            "plan": "PROFESSIONAL", "created_at": iso(now_utc()),
-        })
-    elif not verify_password(admin_pw, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email},
-                                   {"$set": {"password_hash": hash_password(admin_pw)}})
+    # Fire-and-forget so uvicorn starts listening on :8001 immediately.
+    asyncio.create_task(_bootstrap_db())
     asyncio.create_task(followup_loop())
-    logger.info("OrçaNext startup complete")
+    logger.info("OrçaNext startup scheduled")
 
 
 # ---------- Follow-up scheduler ----------

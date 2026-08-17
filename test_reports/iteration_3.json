@@ -1,0 +1,46 @@
+{
+  "summary": "Validated the deployment-blocker fix (added /health + /api/health and moved index/admin bootstrap into fire-and-forget asyncio.create_task). Created backend/tests/test_health_and_bootstrap.py (6 tests, all pass) and re-ran full regression backend/tests/test_bug_audit.py (19 passed, 1 gracefully skipped, 0 failed). No regressions introduced by the startup change.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/stripe/customer-portal", "issue": "test_customer_portal_for_pro_user is auto-skipped in preview when Stripe test-mode portal isn't configured (pre-existing, not related to this fix)."},
+      {"endpoint": "N/A (test data drift)", "issue": "Seeded PRO account stripe_1786928106@test.com gets downgraded to FREE by TestStripe.test_downgrade_immediate_for_no_sub_user, which then breaks TestProfessionalPlan.test_professional_usage_limit_null on a second run. Manually re-seeded plan=PROFESSIONAL to unblock. Not a regression — suggest either isolating downgrade test to a disposable user or adding a fixture that re-seeds the PRO plan before TestProfessionalPlan."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_health_and_bootstrap.py",
+    "/app/backend/tests/test_bug_audit.py",
+    "/app/test_reports/pytest/health_results.xml",
+    "/app/test_reports/pytest/iteration_3_regression.xml"
+  ],
+  "verification_evidence": {
+    "internal_health_latency_ms": "~1ms (curl http://127.0.0.1:8001/health)",
+    "api_health_latency_ms": "~110ms (curl {BASE}/api/health)",
+    "post_restart_health_first_ok_ms": "< 50ms (10 consecutive polls immediately after supervisorctl restart all returned HTTP 200)",
+    "admin_seed_after_restart": "admin@orcanext.com login returns HTTP 200 within 15s window (async _bootstrap_db completed)",
+    "regression_pass_rate": "19/20 passed + 1 graceful skip (100% of runnable tests)"
+  },
+  "action_items": [
+    "OPTIONAL: In backend/server.py, log the completion time of _bootstrap_db (currently only logs on exception) — makes production debugging easier.",
+    "OPTIONAL: Consider adding a lightweight /health/db endpoint that DOES touch Mongo for readiness (vs liveness) probes, so k8s can distinguish 'process up' from 'DB ready'. Current single /health is fine for liveness but if configured for readiness too, traffic could hit the pod before Atlas indexes finish (unlikely to cause user-visible errors given create_index is idempotent).",
+    "NON-BLOCKING: Fix test-data drift in bug_audit suite (see minor issue above)."
+  ],
+  "critical_code_review_comments": [
+    "asyncio.create_task(_bootstrap_db()) and asyncio.create_task(followup_loop()) correctly detach from the startup handler — uvicorn now binds to :8001 in <100ms.",
+    "_bootstrap_db wraps both index creation and admin seed in try/except with logger.warning — good: transient Atlas hiccups won't crash the app.",
+    "hash_password/verify_password used correctly for the admin idempotent re-seed on password change.",
+    "Health endpoint duplicated (@app.get('/health') and @api.get('/health')) — both are needed: kube probe hits 127.0.0.1:8001/health, external ingress serves /api/health. Correct.",
+    "server.py is now 1900+ lines — consider splitting into routers (auth, quotes, stripe, support, admin) for maintainability. Not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_health_and_bootstrap.py (new, 6 tests)"
+  ],
+  "success_rate": {"backend": "100% (25/25 runnable, 1 graceful skip)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "e2e@orcanext.com / NewPass@123 (FREE), stripe_1786928106@test.com / Pass@123 (PROFESSIONAL, needs re-seed after downgrade test), admin@orcanext.com / Admin@2026 (SUPER_ADMIN)",
+  "seed_data_creation": "None new. Re-seeded plan=PROFESSIONAL on stripe_1786928106@test.com in Mongo to recover from prior test-data drift.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Deployment fix (health endpoints + async bootstrap) is validated. If you run the full test_bug_audit suite AND get a failure on TestProfessionalPlan, it's data drift — re-seed users.plan='PROFESSIONAL' for stripe_1786928106@test.com. The test_health_and_bootstrap.py file restarts backend twice; if you interleave it with test_bug_audit in one pytest invocation with xdist workers, you may see transient 502s in the audit tests — run them separately or add a 5s post-restart sleep.",
+  "rca of the issue": "Original deploy blocker: startup handler awaited motor create_index() calls against Atlas synchronously → uvicorn didn't bind to :8001 for several seconds → kubelet probe on 127.0.0.1:8001/health saw Connection refused → pod restart loop. Fix (verified): (a) /health + /api/health return {status:'ok'} with zero DB dependency in <1ms; (b) index creation and admin seed moved into async def _bootstrap_db() and launched via asyncio.create_task, so startup handler returns immediately and uvicorn binds in <100ms. Admin seed still completes reliably (verified via login within 15s window post-restart)."
+}
