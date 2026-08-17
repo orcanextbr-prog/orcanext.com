@@ -11,6 +11,7 @@ import ResetPassword from "@/pages/ResetPassword";
 import Onboarding from "@/pages/Onboarding";
 import DashboardLayout from "@/pages/DashboardLayout";
 import QuotesList from "@/pages/dashboard/QuotesList";
+import Overview from "@/pages/dashboard/Overview";
 import QuoteEditor from "@/pages/dashboard/QuoteEditor";
 import Clients from "@/pages/dashboard/Clients";
 import Products from "@/pages/dashboard/Products";
@@ -59,7 +60,8 @@ function App() {
           <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
 
           <Route path="/dashboard" element={<Protected><CompanyGuard><DashboardLayout /></CompanyGuard></Protected>}>
-            <Route index element={<QuotesList />} />
+            <Route index element={<Overview />} />
+            <Route path="overview" element={<Overview />} />
             <Route path="quotes" element={<QuotesList />} />
             <Route path="quotes/new" element={<QuoteEditor />} />
             <Route path="quotes/:id" element={<QuoteEditor />} />

@@ -763,6 +763,62 @@ async def quotes_usage(user: dict = Depends(get_current_user), company: dict = D
     }
 
 
+DASHBOARD_STATUSES = ["RASCUNHO", "ENVIADO", "VISUALIZADO", "AGUARDANDO_APROVACAO",
+                       "APROVADO", "ASSINADO", "RECUSADO", "EXPIRADO", "CANCELADO"]
+SENT_LIKE = {"ENVIADO", "VISUALIZADO", "AGUARDANDO_APROVACAO", "APROVADO", "ASSINADO"}
+APPROVED_LIKE = {"APROVADO", "ASSINADO"}
+
+
+@api.get("/dashboard/summary")
+async def dashboard_summary(period: str = "30d", company: dict = Depends(get_company)):
+    """Aggregate counts + value totals + conversion, scoped to this company only.
+    Single aggregation, no per-card round-trip. Multi-tenant enforced by company_id filter."""
+    now = now_utc()
+    if period == "7d":
+        since = now - timedelta(days=7)
+    elif period == "30d":
+        since = now - timedelta(days=30)
+    elif period == "3m":
+        since = now - timedelta(days=90)
+    else:
+        since = None  # all-time
+    match = {"company_id": company["id"]}
+    if since is not None:
+        match["created_at"] = {"$gte": iso(since)}
+    pipeline = [
+        {"$match": match},
+        {"$group": {
+            "_id": "$status",
+            "count": {"$sum": 1},
+            "value": {"$sum": {"$ifNull": ["$total", 0]}},
+        }},
+    ]
+    rows = await db.quotes.aggregate(pipeline).to_list(50)
+    counts = {s: 0 for s in DASHBOARD_STATUSES}
+    values = {s: 0.0 for s in DASHBOARD_STATUSES}
+    for r in rows:
+        s = r["_id"]
+        if s in counts:
+            counts[s] = r["count"]
+            values[s] = float(r.get("value") or 0)
+    total = sum(counts.values())
+    sent_count = sum(counts[s] for s in SENT_LIKE)
+    approved_count = sum(counts[s] for s in APPROVED_LIKE)
+    value_sent = sum(values[s] for s in SENT_LIKE)
+    value_approved = sum(values[s] for s in APPROVED_LIKE)
+    conversion = round((approved_count / sent_count * 100), 1) if sent_count else 0.0
+    return {
+        "period": period,
+        "total": total,
+        "counts": counts,
+        "sent_count": sent_count,
+        "approved_count": approved_count,
+        "value_sent": value_sent,
+        "value_approved": value_approved,
+        "conversion_rate": conversion,
+    }
+
+
 @api.get("/quotes")
 async def list_quotes(status: str = "", q: str = "", company: dict = Depends(get_company)):
     query = {"company_id": company["id"]}

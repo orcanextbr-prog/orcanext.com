@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { FileText, Users, Package, Wrench, Receipt, Building2, CreditCard, LogOut, Menu, X, Shield, ShieldAlert } from "lucide-react";
+import { FileText, Users, Package, Wrench, Receipt, Building2, CreditCard, LogOut, Menu, X, Shield, ShieldAlert, LayoutDashboard } from "lucide-react";
 
 const NavItem = ({ to, icon: I, label, testid }) => (
   <NavLink end to={to} data-testid={testid}
@@ -46,6 +46,7 @@ export default function DashboardLayout() {
         <button className="md:hidden" onClick={() => setOpen(false)}><X className="w-5 h-5" /></button>
       </div>
       <nav className="p-3 space-y-1">
+        <NavItem to="/dashboard/overview" icon={LayoutDashboard} label="Painel" testid="nav-overview" />
         <NavItem to="/dashboard/quotes" icon={FileText} label="Orçamentos" testid="nav-quotes" />
         <NavItem to="/dashboard/clients" icon={Users} label="Clientes" testid="nav-clients" />
         <NavItem to="/dashboard/products" icon={Package} label="Produtos" testid="nav-products" />
