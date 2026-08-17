@@ -1,0 +1,32 @@
+{
+  "summary": "Executed /app/backend/tests/test_bug_audit.py (20 tests, 10 classes) + frontend smoke (1440x900). Backend: 20/20 PASS after fixing test-side email domain (email-validator rejects .local TLD) and public-quote response shape assertion. Frontend: login OK, all 8 dashboard routes render, sidebar shows '3/15' confirming FREE_QUOTE_LIMIT=15 drift resolved, /dashboard/quotes/new has both [data-testid='items-mobile-list'] and the hidden md:block desktop table container, quote editor exposes [data-testid='edit-whatsapp'] plus edit-download-pdf/copy-link/send/save. Zero real console errors on any protected route; the only console errors observed are the two pre-login 401s from /api/auth/me probes on the /login page (benign, expected auth bootstrap).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_bug_audit.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py public/quote endpoint has a defensive dead branch (line ~1061-1065): the initial `owner` fetch uses `{'id': company['owner_id']}` but `strip_id`/pop already removed owner_id, so it always misses; the fallback re-fetches company and computes is_pro correctly. Consider cleaning up to avoid confusion.",
+    "server.py public/quote leaks watermark logic tied only to is_pro of owner; safe now, but ensure owner lookup keeps working if plan model changes (e.g. TRIAL).",
+    "/app/backend/server.py is 1875 lines - exceeds 700-line guideline; recommend splitting into routers (auth, quotes, stripe, admin, support)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bug_audit.py (test-side fixes only: valid @example.com domain and pb['quote']['total'] shape)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% (all routes + assertions)"},
+  "test_credentials": "e2e@orcanext.com / NewPass@123 (FREE), stripe_1786928106@test.com / Pass@123 (PROFESSIONAL), admin@orcanext.com / Admin@2026 (SUPER_ADMIN)",
+  "seed_data_creation": "Backend tests create TEST_-prefixed clients/products/services/quotes and disposable audit_*@example.com users. No cleanup fixture yet; MongoDB will accumulate test records over runs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_bug_audit.py is stable and passes 20/20 against current preview URL. If future auth adds rate limiting or captcha, TestAuth.test_login_wrong_password_rejected and register loops may need throttling. TestFreeQuota creates 15 quotes per test — expect ~50 quote_usage docs added per full run. Frontend routes and data-testids verified: [data-testid='items-mobile-list'], hidden md:block table wrapper, edit-whatsapp/download-pdf/copy-link/send/save. Public quote payload shape is nested: {quote:{total,...}, company, client, signature, watermark:boolean}.",
+  "rca of the issue": "No production bugs found. Pre-existing test-side issues in prior iteration file: (1) email-validator library (used by Pydantic EmailStr) rejects reserved TLDs like `.local` per RFC 6761 - switched to @example.com; (2) public-quote endpoint returns nested {quote, company, client, signature, watermark} not flat - updated assertion to pb['quote']['total']. Main agent's FREE_QUOTE_LIMIT=15 fix confirmed working end-to-end: env, platform_settings.free_limit, /api/quotes/usage, /api/plan, sidebar UI ('3/15'), and 16th POST /api/quotes correctly returns HTTP 402 blocked=true."
+}
