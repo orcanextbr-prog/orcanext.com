@@ -94,7 +94,8 @@ export default function QuotesList() {
         </Select>
       </div>
 
-      <div className="mt-6 bg-white border border-zinc-200 rounded-xl overflow-x-auto">
+      {/* Desktop / tablet: table */}
+      <div className="mt-6 hidden md:block bg-white border border-zinc-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500">
             <tr>
@@ -142,6 +143,55 @@ export default function QuotesList() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: card list */}
+      <div className="mt-6 md:hidden space-y-3" data-testid="quotes-mobile-list">
+        {loading ? (
+          <div className="bg-white border border-zinc-200 rounded-xl px-4 py-10 text-center text-zinc-400">Carregando…</div>
+        ) : items.length === 0 ? (
+          <div className="bg-white border border-zinc-200 rounded-xl px-4 py-12 text-center">
+            <div className="font-semibold">Nenhum orçamento ainda.</div>
+            <p className="text-zinc-500 text-sm mt-1">Comece criando seu primeiro orçamento.</p>
+            <Button onClick={tryCreate} className="mt-4 brand-bg hover:bg-[#008a02] text-white font-bold">
+              <Plus className="w-4 h-4 mr-2" /> Criar orçamento
+            </Button>
+          </div>
+        ) : items.map((i) => (
+          <div key={i.id} data-testid={`quote-card-${i.number}`}
+               className="bg-white border border-zinc-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">#{i.number}</div>
+                <div className="mt-1 font-display font-extrabold text-lg truncate">{i.client_name || "Sem cliente"}</div>
+              </div>
+              <Badge className={`rounded-md shrink-0 ${STATUS_STYLE[i.status] || "bg-zinc-100"}`}>{i.status}</Badge>
+            </div>
+            <div className="mt-3 flex items-baseline justify-between gap-3">
+              <div className="text-2xl font-display font-black">{money(i.total)}</div>
+              <div className="text-xs text-zinc-500 whitespace-nowrap">{i.date}{i.expiration_date ? ` · val. ${i.expiration_date}` : ""}</div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button onClick={() => nav(`/dashboard/quotes/${i.id}`)}
+                      className="flex-1 brand-bg hover:bg-[#008a02] text-white font-bold"
+                      data-testid={`quote-card-open-${i.number}`}>
+                <FileText className="w-4 h-4 mr-2" /> VER ORÇAMENTO
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" data-testid={`quote-card-actions-${i.number}`}><MoreHorizontal className="w-4 h-4" /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => duplicate(i.id)}><Copy className="w-4 h-4 mr-2" />Duplicar</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => copyLink(i.public_token)}><Link2 className="w-4 h-4 mr-2" />Copiar link</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => window.open(publicUrl(i.public_token), "_blank")}><ExternalLink className="w-4 h-4 mr-2" />Abrir público</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => downloadPDF(i.id)}><Download className="w-4 h-4 mr-2" />Baixar PDF</DropdownMenuItem>
+                  <DropdownMenuItem className="text-red-600" onClick={() => remove(i.id)}><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        ))}
       </div>
 
       <Dialog open={blockOpen} onOpenChange={setBlockOpen}>
