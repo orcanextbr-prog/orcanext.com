@@ -162,7 +162,7 @@ function Benefits() {
     <section id="recursos" className="bg-black text-white py-20">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400 mb-3">Benefícios</div>
-        <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight text-white">Feito para quem vende com profissionalismo.</h2>
+        <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight !text-white">Feito para quem vende com profissionalismo.</h2>
         <div className="mt-10 grid md:grid-cols-4 gap-4">
           <div className="md:row-span-2 md:col-span-2 bg-[#00AD02] rounded-2xl p-8 flex flex-col justify-between min-h-[300px]">
             <Zap className="w-10 h-10" />
