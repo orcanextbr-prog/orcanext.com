@@ -74,6 +74,7 @@ export default function Admin() {
             <span className="font-display font-extrabold">OrçaNext <span className="text-zinc-400 text-sm font-normal">Admin</span></span>
           </Link>
           <div className="flex items-center gap-3">
+            <Link to="/admin/support" className="text-sm text-white hover:underline hidden md:inline" data-testid="admin-nav-support">Suporte</Link>
             <Badge className="brand-bg text-white rounded-md uppercase tracking-widest text-xs">{user?.role}</Badge>
             <span className="text-sm text-zinc-400 hidden md:inline">{user?.email}</span>
             <Button variant="outline" className="text-black" onClick={async () => { await logout(); nav("/"); }}><LogOut className="w-4 h-4 mr-2" />Sair</Button>

@@ -302,6 +302,10 @@ async def startup():
     await db.payments.create_index([("user_id", 1), ("created_at", -1)])
     await db.payments.create_index("stripe_session_id")
     await db.users.create_index("stripe_customer_id", sparse=True)
+    await db.support_tickets.create_index([("user_id", 1), ("updated_at", -1)])
+    await db.support_tickets.create_index("number", unique=True)
+    await db.support_tickets.create_index([("status", 1), ("updated_at", -1)])
+    await db.support_messages.create_index([("ticket_id", 1), ("created_at", 1)])
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@orcanext.com").lower()
     admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@2026")
@@ -1472,6 +1476,174 @@ async def stripe_webhook(request: Request):
         logger.exception("Stripe webhook processing failed: %s", event_type)
         raise HTTPException(500, "Webhook processing failed")
     return {"received": True}
+
+
+# ---------- Support tickets ----------
+SUPPORT_STATUSES = ["ABERTO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO", "RESOLVIDO", "FECHADO"]
+SUPPORT_CATEGORIES = ["Dúvida", "Problema", "Pagamento", "Conta", "Orçamento", "Sugestão", "Outro"]
+USER_REPLYABLE = {"ABERTO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO"}
+
+
+class TicketIn(BaseModel):
+    subject: str = Field(..., min_length=3, max_length=140)
+    category: str
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
+class TicketMessageIn(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
+class TicketStatusIn(BaseModel):
+    status: Literal["ABERTO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO", "RESOLVIDO", "FECHADO"]
+
+
+async def _next_ticket_number() -> int:
+    """Sequential ticket number starting at 1024, atomic via findAndModify."""
+    doc = await db.support_counters.find_one_and_update(
+        {"id": "tickets"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True,
+    )
+    seq = doc.get("seq") if doc else None
+    if not seq:
+        # First bump initializes seq=1; offset to start at 1024
+        seq = 1
+    return 1023 + int(seq)
+
+
+def _sanitize_ticket(t: dict, unread_for: Optional[str] = None) -> dict:
+    strip_id(t)
+    if unread_for and t.get("last_read", {}).get(unread_for) != t.get("updated_at"):
+        t["unread"] = True
+    return t
+
+
+@api.get("/support/categories")
+async def support_categories(user: dict = Depends(get_current_user)):
+    return {"categories": SUPPORT_CATEGORIES}
+
+
+@api.post("/support/tickets")
+async def create_ticket(payload: TicketIn, request: Request,
+                         user: dict = Depends(get_current_user),
+                         company: dict = Depends(get_company)):
+    if payload.category not in SUPPORT_CATEGORIES:
+        raise HTTPException(400, "Categoria inválida")
+    now = iso(now_utc())
+    tid = new_id()
+    number = await _next_ticket_number()
+    ticket = {
+        "id": tid, "number": number,
+        "user_id": user["id"], "company_id": company["id"],
+        "user_email": user["email"], "user_name": user.get("name"),
+        "company_name": company.get("name"),
+        "subject": payload.subject.strip(),
+        "category": payload.category,
+        "status": "ABERTO",
+        "created_at": now, "updated_at": now,
+        "last_message_by": "USER",
+    }
+    await db.support_tickets.insert_one(ticket)
+    await db.support_messages.insert_one({
+        "id": new_id(), "ticket_id": tid,
+        "sender_id": user["id"], "sender_type": "USER",
+        "sender_name": user.get("name") or user["email"],
+        "message": payload.message.strip(), "created_at": now,
+    })
+    await audit(company["id"], user["id"], "SUPPORT_TICKET_CREATED", "ticket", tid, request)
+    return _sanitize_ticket(ticket)
+
+
+@api.get("/support/tickets")
+async def list_user_tickets(user: dict = Depends(get_current_user)):
+    docs = await db.support_tickets.find({"user_id": user["id"]}).sort("updated_at", -1).to_list(500)
+    return [_sanitize_ticket(d) for d in docs]
+
+
+@api.get("/support/tickets/{tid}")
+async def get_ticket(tid: str, user: dict = Depends(get_current_user)):
+    t = await db.support_tickets.find_one({"id": tid})
+    if not t:
+        raise HTTPException(404, "Chamado não encontrado")
+    is_admin = user.get("role") in ("admin", "super_admin")
+    if not is_admin and t["user_id"] != user["id"]:
+        raise HTTPException(403, "Acesso negado")
+    msgs = await db.support_messages.find({"ticket_id": tid}).sort("created_at", 1).to_list(1000)
+    for m in msgs:
+        strip_id(m)
+    return {"ticket": _sanitize_ticket(t), "messages": msgs}
+
+
+@api.post("/support/tickets/{tid}/messages")
+async def add_ticket_message(tid: str, payload: TicketMessageIn,
+                              user: dict = Depends(get_current_user)):
+    t = await db.support_tickets.find_one({"id": tid})
+    if not t:
+        raise HTTPException(404, "Chamado não encontrado")
+    is_admin = user.get("role") in ("admin", "super_admin")
+    if not is_admin and t["user_id"] != user["id"]:
+        raise HTTPException(403, "Acesso negado")
+    if t["status"] == "FECHADO":
+        raise HTTPException(400, "Chamado fechado. Abra um novo chamado para continuar.")
+    if not is_admin and t["status"] not in USER_REPLYABLE:
+        raise HTTPException(400, "Não é possível responder este chamado")
+    now = iso(now_utc())
+    sender_type = "ADMIN" if is_admin else "USER"
+    await db.support_messages.insert_one({
+        "id": new_id(), "ticket_id": tid,
+        "sender_id": user["id"], "sender_type": sender_type,
+        "sender_name": user.get("name") or user["email"],
+        "message": payload.message.strip(), "created_at": now,
+    })
+    # Auto-status transition: admin reply → AGUARDANDO_USUARIO; user reply → EM_ATENDIMENTO if it was AGUARDANDO_USUARIO
+    new_status = t["status"]
+    if is_admin and t["status"] in ("ABERTO", "EM_ATENDIMENTO"):
+        new_status = "AGUARDANDO_USUARIO"
+    elif not is_admin and t["status"] == "AGUARDANDO_USUARIO":
+        new_status = "EM_ATENDIMENTO"
+    await db.support_tickets.update_one({"id": tid}, {"$set": {
+        "updated_at": now, "last_message_by": sender_type, "status": new_status,
+    }})
+    return {"ok": True, "status": new_status}
+
+
+@api.put("/support/tickets/{tid}/status")
+async def update_ticket_status(tid: str, payload: TicketStatusIn, request: Request,
+                                admin: dict = Depends(get_admin)):
+    t = await db.support_tickets.find_one({"id": tid})
+    if not t:
+        raise HTTPException(404, "Chamado não encontrado")
+    now = iso(now_utc())
+    await db.support_tickets.update_one({"id": tid},
+        {"$set": {"status": payload.status, "updated_at": now}})
+    await audit(t.get("company_id", "_platform_"), admin["id"], "SUPPORT_STATUS_CHANGED",
+                "ticket", tid, request, metadata={"to": payload.status})
+    return {"ok": True, "status": payload.status}
+
+
+@api.get("/admin/support/tickets")
+async def admin_list_tickets(status: str = "", admin: dict = Depends(get_admin)):
+    query: dict = {}
+    if status and status in SUPPORT_STATUSES:
+        query["status"] = status
+    docs = await db.support_tickets.find(query).sort("updated_at", -1).to_list(500)
+    return [_sanitize_ticket(d) for d in docs]
+
+
+@api.get("/admin/support/stats")
+async def admin_support_stats(admin: dict = Depends(get_admin)):
+    pipeline = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
+    rows = await db.support_tickets.aggregate(pipeline).to_list(20)
+    stats = {s: 0 for s in SUPPORT_STATUSES}
+    for r in rows:
+        if r["_id"] in stats:
+            stats[r["_id"]] = r["count"]
+    stats["TOTAL"] = sum(stats[s] for s in SUPPORT_STATUSES)
+    # Nova resposta do usuário aguardando atenção (pra badge no admin)
+    stats["needs_admin"] = await db.support_tickets.count_documents({
+        "status": {"$in": ["ABERTO", "EM_ATENDIMENTO"]},
+        "last_message_by": "USER",
+    })
+    return stats
 
 
 # ---------- Admin ----------

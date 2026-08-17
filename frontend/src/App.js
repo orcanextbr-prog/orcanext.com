@@ -19,8 +19,10 @@ import Services from "@/pages/dashboard/Services";
 import Receipts from "@/pages/dashboard/Receipts";
 import MyCompany from "@/pages/dashboard/MyCompany";
 import MyPlan from "@/pages/dashboard/MyPlan";
+import Support from "@/pages/dashboard/Support";
 import PublicQuote from "@/pages/PublicQuote";
 import Admin from "@/pages/Admin";
+import AdminSupport from "@/pages/AdminSupport";
 import BillingSuccess from "@/pages/BillingSuccess";
 import BillingCancel from "@/pages/BillingCancel";
 
@@ -71,9 +73,11 @@ function App() {
             <Route path="receipts" element={<Receipts />} />
             <Route path="company" element={<MyCompany />} />
             <Route path="plan" element={<MyPlan />} />
+            <Route path="support" element={<Support />} />
           </Route>
 
           <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
+          <Route path="/admin/support" element={<Protected adminOnly><AdminSupport /></Protected>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
