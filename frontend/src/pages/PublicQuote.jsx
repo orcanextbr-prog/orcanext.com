@@ -66,7 +66,7 @@ export default function PublicQuote() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             {company?.logo ? <img src={company.logo} alt="logo" className="h-10 w-10 object-contain rounded-md border border-zinc-200 bg-white" />
-              : <span className="w-10 h-10 rounded-md brand-bg text-white flex items-center justify-center font-black">O</span>}
+              : <img src="/logo.png" alt="OrçaNext" className="w-10 h-10" />}
             <div>
               <div className="font-display font-extrabold">{company?.name || "OrçaNext"}</div>
               <div className="text-xs text-zinc-500">{company?.document || ""}</div>

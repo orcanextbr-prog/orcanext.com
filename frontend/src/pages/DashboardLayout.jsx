@@ -40,7 +40,7 @@ export default function DashboardLayout() {
     <aside className="w-64 bg-white border-r border-zinc-200 min-h-screen flex flex-col">
       <div className="p-5 border-b border-zinc-200 flex items-center justify-between">
         <Link to="/dashboard" className="flex items-center gap-2" data-testid="side-logo">
-          <span className="w-8 h-8 rounded-md brand-bg text-white flex items-center justify-center font-black">O</span>
+          <img src="/logo.png" alt="OrçaNext" className="w-8 h-8" />
           <span className="font-display font-extrabold">OrçaNext</span>
         </Link>
         <button className="md:hidden" onClick={() => setOpen(false)}><X className="w-5 h-5" /></button>

@@ -13,7 +13,7 @@ function Header() {
     <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-zinc-200">
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
         <Link to="/" className="flex items-center gap-2" data-testid="header-logo">
-          <span className="w-8 h-8 rounded-md brand-bg flex items-center justify-center text-white font-black">O</span>
+          <img src="/logo.png" alt="OrçaNext" className="w-8 h-8" />
           <span className="text-xl font-display font-extrabold">Orça<span className="brand-text">Next</span></span>
         </Link>
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-700">
@@ -379,7 +379,7 @@ function Footer() {
       <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between gap-8">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-md brand-bg flex items-center justify-center font-black">O</span>
+            <img src="/logo.png" alt="OrçaNext" className="w-8 h-8" />
             <span className="text-xl font-display font-extrabold">OrçaNext</span>
           </div>
           <p className="mt-3 text-zinc-400 text-sm max-w-xs">Crie. Envie. Aprove. Receba. Do orçamento ao fechamento.</p>

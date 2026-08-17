@@ -44,7 +44,7 @@ export default function ResetPassword() {
     <div className="min-h-screen grid md:grid-cols-2">
       <div className="hidden md:flex brand-bg text-white p-12 flex-col justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-md bg-black flex items-center justify-center font-black">O</span>
+          <img src="/logo.png" alt="OrçaNext" className="w-8 h-8" />
           <span className="text-xl font-display font-extrabold">OrçaNext</span>
         </Link>
         <h2 className="font-display font-black text-5xl leading-none tracking-tighter">Nova senha,<br />novo começo.</h2>

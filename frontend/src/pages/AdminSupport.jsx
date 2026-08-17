@@ -137,7 +137,7 @@ export default function AdminSupport() {
       <header className="bg-black text-white">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link to="/admin" className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-md brand-bg flex items-center justify-center font-black">O</span>
+            <img src="/logo.png" alt="OrçaNext" className="w-8 h-8" />
             <span className="font-display font-extrabold">OrçaNext <span className="text-zinc-400 text-sm font-normal">Suporte</span></span>
           </Link>
           <div className="flex items-center gap-3">
