@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, Search, Save, Send, Bell, BellOff } from "lucide-react";
+import { Plus, Trash2, Search, Save, Send, Bell, BellOff, MessageCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 export default function QuoteEditor() {
@@ -140,6 +140,30 @@ export default function QuoteEditor() {
 
   const publicUrl = current ? `${window.location.origin}/q/${current.public_token}` : null;
 
+  const sendWhatsapp = () => {
+    if (!current) return;
+    const client = clients.find((c) => c.id === clientId);
+    const rawPhone = (client?.phone || "").replace(/\D/g, "");
+    if (!rawPhone) {
+      toast.error("Telefone não cadastrado. Cadastre o WhatsApp do cliente para enviar o orçamento.", {
+        action: client ? { label: "Editar cliente", onClick: () => nav("/dashboard/clients") } : undefined,
+      });
+      return;
+    }
+    // BR default: prepend 55 when the number starts without country code (10–11 digits).
+    const phone = rawPhone.length <= 11 ? `55${rawPhone}` : rawPhone;
+    const firstName = (client?.name || "").split(" ")[0] || "";
+    const total = money(current.total ?? subtotal - discountValue);
+    const msg =
+      `Olá, ${firstName}! 👋\n\n` +
+      `Segue o seu orçamento:\n\n` +
+      `📄 Orçamento ${current.number}\n` +
+      `💰 Valor: ${total}\n\n` +
+      `🔗 Visualize seu orçamento pelo link:\n${publicUrl}\n\n` +
+      `Qualquer dúvida, estou à disposição!`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+  };
+
   const toggleFollowup = async (v) => {
     setFollowUp(v);
     if (!current) return;
@@ -166,6 +190,9 @@ export default function QuoteEditor() {
         <div className="flex gap-2 flex-wrap">
           {current && (
             <>
+              <Button onClick={sendWhatsapp} className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="edit-whatsapp">
+                <MessageCircle className="w-4 h-4 mr-2" /> Enviar pelo WhatsApp
+              </Button>
               <Button variant="outline" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/quotes/${current.id}/pdf`, "_blank")} data-testid="edit-download-pdf">
                 Baixar PDF
               </Button>
@@ -175,7 +202,7 @@ export default function QuoteEditor() {
               <Button variant="outline" onClick={send} data-testid="edit-send"><Send className="w-4 h-4 mr-2" />Marcar como enviado</Button>
             </>
           )}
-          <Button onClick={save} className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="edit-save"><Save className="w-4 h-4 mr-2" />Salvar</Button>
+          <Button onClick={save} variant={current ? "outline" : "default"} className={current ? "font-bold" : "brand-bg hover:bg-[#008a02] text-white font-bold"} data-testid="edit-save"><Save className="w-4 h-4 mr-2" />Salvar</Button>
         </div>
       </div>
 
