@@ -118,7 +118,7 @@ export default function Admin() {
 
           <TabsContent value="users" className="mt-4">
             <Input placeholder="Pesquisar por nome ou e-mail…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-sm mb-3" data-testid="admin-users-search" />
-            <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+            <div className="bg-white border border-zinc-200 rounded-xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500"><tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Plano</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Ações</th></tr></thead>
                 <tbody>
@@ -148,7 +148,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="companies" className="mt-4">
-            <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+            <div className="bg-white border border-zinc-200 rounded-xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500"><tr><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Documento</th><th className="px-4 py-3">Proprietário</th><th className="px-4 py-3">Plano</th><th className="px-4 py-3">Orçamentos</th><th className="px-4 py-3">Clientes</th></tr></thead>
                 <tbody>
@@ -168,7 +168,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="quotes" className="mt-4">
-            <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+            <div className="bg-white border border-zinc-200 rounded-xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500"><tr><th className="px-4 py-3">Nº</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Status</th></tr></thead>
                 <tbody>
@@ -187,7 +187,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="near" className="mt-4">
-            <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+            <div className="bg-white border border-zinc-200 rounded-xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500"><tr><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Usuário</th><th className="px-4 py-3">Uso</th></tr></thead>
                 <tbody>
@@ -205,7 +205,7 @@ export default function Admin() {
           </TabsContent>
 
           <TabsContent value="activity" className="mt-4">
-            <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+            <div className="bg-white border border-zinc-200 rounded-xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500"><tr><th className="px-4 py-3">Ação</th><th className="px-4 py-3">Entidade</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">IP</th><th className="px-4 py-3">Data</th></tr></thead>
                 <tbody>

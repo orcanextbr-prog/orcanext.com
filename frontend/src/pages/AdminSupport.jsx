@@ -179,7 +179,7 @@ export default function AdminSupport() {
               ))}
             </div>
 
-            <div className="mt-4 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+            <div className="mt-4 bg-white border border-zinc-200 rounded-2xl overflow-x-auto">
               {tickets.length === 0 ? (
                 <div className="p-12 text-center text-zinc-500 text-sm">Nenhum chamado encontrado.</div>
               ) : (

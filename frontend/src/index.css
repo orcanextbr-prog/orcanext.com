@@ -88,3 +88,14 @@ h1, h2, h3, h4, h5, h6, .font-display {
   to { opacity: 1; transform: translateY(0); }
 }
 .fade-up { animation: fadeUp .5s ease both; }
+
+/* --- Mobile safety net --- */
+html, body { overflow-x: hidden; }
+/* Any table sitting inside our card wrappers gets horizontal scroll on mobile */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* Ensure long strings don't push layouts off-screen */
+td, th, .cell-wrap { word-break: break-word; }
+/* Dialog default sits at max-w-lg; on tiny screens it fills the viewport */
+@media (max-width: 640px) {
+  [role="dialog"] { max-width: calc(100vw - 24px) !important; }
+}

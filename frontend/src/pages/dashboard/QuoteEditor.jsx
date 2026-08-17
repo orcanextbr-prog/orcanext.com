@@ -163,7 +163,7 @@ export default function QuoteEditor() {
           <h1 className="font-display text-3xl font-black">{current ? `Orçamento ${current.number}` : "Novo orçamento"}</h1>
           {current && <div className="text-zinc-500 text-sm mt-1">Status: <b>{current.status}</b></div>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {current && (
             <>
               <Button variant="outline" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/quotes/${current.id}/pdf`, "_blank")} data-testid="edit-download-pdf">

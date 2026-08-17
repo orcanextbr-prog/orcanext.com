@@ -44,7 +44,7 @@ export default function Clients() {
         <Button onClick={openNew} className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="new-client-btn"><Plus className="w-4 h-4 mr-2" />NOVO CLIENTE</Button>
       </div>
       <Input placeholder="Pesquisar cliente…" value={q} onChange={(e) => setQ(e.target.value)} className="mt-6 max-w-sm" data-testid="clients-search" />
-      <div className="mt-4 bg-white border border-zinc-200 rounded-xl overflow-hidden">
+      <div className="mt-4 bg-white border border-zinc-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500">
             <tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3">Documento</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Telefone</th><th className="px-4 py-3 text-right">Ações</th></tr>

@@ -94,7 +94,7 @@ export default function QuotesList() {
         </Select>
       </div>
 
-      <div className="mt-6 bg-white border border-zinc-200 rounded-xl overflow-hidden">
+      <div className="mt-6 bg-white border border-zinc-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500">
             <tr>

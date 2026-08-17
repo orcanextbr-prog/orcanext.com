@@ -181,7 +181,7 @@ export default function Support() {
         </Button>
       </div>
 
-      <div className="mt-6 bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+      <div className="mt-6 bg-white border border-zinc-200 rounded-2xl overflow-x-auto">
         {tickets.length === 0 ? (
           <div className="p-12 text-center text-zinc-500 text-sm">Nenhum chamado ainda. Clique em <b>+ Novo chamado</b> para começar.</div>
         ) : (

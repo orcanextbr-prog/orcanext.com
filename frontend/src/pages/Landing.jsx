@@ -43,7 +43,7 @@ function Hero() {
           <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-6">
             <span className="w-2 h-2 rounded-full brand-bg" /> Do orçamento ao fechamento
           </div>
-          <h1 className="font-display font-black text-5xl sm:text-6xl lg:text-7xl leading-[0.95] tracking-tighter text-black">
+          <h1 className="font-display font-black text-4xl sm:text-6xl lg:text-7xl leading-[0.95] tracking-tighter text-black">
             Crie, envie e aprove seus orçamentos <span className="brand-text">em poucos minutos.</span>
           </h1>
           <p className="mt-6 text-lg text-zinc-600 leading-relaxed max-w-xl">
@@ -108,7 +108,7 @@ function Problem() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="max-w-2xl">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-3">O problema</div>
-          <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight">Fazer orçamento não deveria ser complicado.</h2>
+          <h2 className="font-display text-3xl md:text-5xl font-black tracking-tight">Fazer orçamento não deveria ser complicado.</h2>
         </div>
         <div className="grid md:grid-cols-3 gap-4 mt-10">
           {items.map((t, i) => (
@@ -142,7 +142,7 @@ function HowItWorks() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="max-w-2xl">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-3">Como funciona</div>
-          <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight">Do orçamento ao fechamento, tudo em um só lugar.</h2>
+          <h2 className="font-display text-3xl md:text-5xl font-black tracking-tight">Do orçamento ao fechamento, tudo em um só lugar.</h2>
         </div>
         <div className="mt-10 grid md:grid-cols-7 gap-3">
           {steps.map((s, i) => (
@@ -162,7 +162,7 @@ function Benefits() {
     <section id="recursos" className="bg-black text-white py-20">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400 mb-3">Benefícios</div>
-        <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight !text-white">Feito para quem vende com profissionalismo.</h2>
+        <h2 className="font-display text-3xl md:text-5xl font-black tracking-tight !text-white">Feito para quem vende com profissionalismo.</h2>
         <div className="mt-10 grid md:grid-cols-4 gap-4">
           <div className="md:row-span-2 md:col-span-2 bg-[#00AD02] rounded-2xl p-8 flex flex-col justify-between min-h-[300px]">
             <Zap className="w-10 h-10" />
@@ -197,7 +197,7 @@ function Pricing() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="max-w-2xl">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-3">Planos</div>
-          <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight">Escolha o plano ideal para o seu negócio</h2>
+          <h2 className="font-display text-3xl md:text-5xl font-black tracking-tight">Escolha o plano ideal para o seu negócio</h2>
           <p className="mt-3 text-zinc-600 text-lg">Comece grátis e evolua quando precisar.</p>
         </div>
         <div className="mt-10 grid md:grid-cols-2 gap-6">
@@ -302,7 +302,7 @@ function Testimonials() {
     <section id="depoimentos" className="py-20">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-3">Depoimentos</div>
-        <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight">Feito para pequenos negócios.</h2>
+        <h2 className="font-display text-3xl md:text-5xl font-black tracking-tight">Feito para pequenos negócios.</h2>
         <div className="mt-10 grid md:grid-cols-2 gap-6">
           {t.map((x, i) => (
             <div key={i} className="bg-white border border-zinc-200 rounded-2xl p-8 hover-lift">
@@ -340,7 +340,7 @@ function FAQ() {
     <section id="faq" className="py-20 bg-zinc-50 border-t border-zinc-200">
       <div className="max-w-3xl mx-auto px-6">
         <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-3">FAQ</div>
-        <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight">Perguntas frequentes.</h2>
+        <h2 className="font-display text-3xl md:text-5xl font-black tracking-tight">Perguntas frequentes.</h2>
         <Accordion type="single" collapsible className="mt-8" data-testid="faq-accordion">
           {faqs.map(([q, a], i) => (
             <AccordionItem key={i} value={`q${i}`} className="border-zinc-200">
@@ -358,7 +358,7 @@ function CTA() {
   return (
     <section className="py-24 bg-white">
       <div className="max-w-4xl mx-auto px-6 text-center">
-        <h2 className="font-display font-black text-4xl md:text-6xl tracking-tighter">Pronto para transformar seus orçamentos em negócios fechados?</h2>
+        <h2 className="font-display font-black text-3xl md:text-6xl tracking-tighter">Pronto para transformar seus orçamentos em negócios fechados?</h2>
         <p className="mt-4 text-zinc-600 text-lg">Comece gratuitamente com até 15 orçamentos por mês. Quando precisar de mais, tenha orçamentos ilimitados por apenas <b className="brand-text">R$ 49,90/mês</b>.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Link to="/register" data-testid="final-cta">

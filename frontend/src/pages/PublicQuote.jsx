@@ -63,16 +63,16 @@ export default function PublicQuote() {
     <div className="min-h-screen bg-zinc-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
         {/* top brand bar */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            {company?.logo ? <img src={company.logo} alt="logo" className="h-10 w-10 object-contain rounded-md border border-zinc-200 bg-white" />
-              : <img src="/logo.png" alt="OrçaNext" className="w-10 h-10" />}
-            <div>
-              <div className="font-display font-extrabold">{company?.name || "OrçaNext"}</div>
-              <div className="text-xs text-zinc-500">{company?.document || ""}</div>
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3 min-w-0">
+            {company?.logo ? <img src={company.logo} alt="logo" className="h-10 w-10 shrink-0 object-contain rounded-md border border-zinc-200 bg-white" />
+              : <img src="/logo.png" alt="OrçaNext" className="w-10 h-10 shrink-0" />}
+            <div className="min-w-0">
+              <div className="font-display font-extrabold truncate">{company?.name || "OrçaNext"}</div>
+              <div className="text-xs text-zinc-500 truncate">{company?.document || ""}</div>
             </div>
           </div>
-          <Badge className={done ? "brand-bg text-white rounded-md" : "bg-black text-white rounded-md"}>{quote.status}</Badge>
+          <Badge className={`${done ? "brand-bg text-white" : "bg-black text-white"} rounded-md shrink-0`}>{quote.status}</Badge>
         </div>
 
         <div className="bg-white border border-zinc-200 rounded-2xl p-6 md:p-10">
@@ -102,7 +102,7 @@ export default function PublicQuote() {
             </div>
           </div>
 
-          <div className="mt-6 rounded-lg border border-zinc-200 overflow-hidden">
+          <div className="mt-6 rounded-lg border border-zinc-200 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-black text-white text-xs uppercase tracking-widest">
                 <tr><th className="text-left px-3 py-2">Item</th><th className="text-right px-3 py-2">Qtd</th><th className="text-right px-3 py-2">Vlr. unit.</th><th className="text-right px-3 py-2">Total</th></tr>

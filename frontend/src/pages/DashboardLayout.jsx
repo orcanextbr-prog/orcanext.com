@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
@@ -17,9 +17,13 @@ const NavItem = ({ to, icon: I, label, testid }) => (
 export default function DashboardLayout() {
   const { user, company, logout, refresh } = useAuth();
   const nav = useNavigate();
+  const location = useLocation();
   const [usage, setUsage] = useState(null);
   const [open, setOpen] = useState(false);
   const impersonating = !!user?.impersonated_by;
+
+  // Auto-close the mobile drawer whenever the route changes so users are never trapped inside the menu after tapping a nav item.
+  useEffect(() => { setOpen(false); }, [location.pathname]);
 
   const endImpersonation = async () => {
     try {
@@ -117,7 +121,7 @@ export default function DashboardLayout() {
         </div>
       )}
       <div className={`hidden md:block ${impersonating ? "pt-11" : ""}`}>{Sidebar}</div>
-      {open && <div className="md:hidden fixed inset-0 z-40"><div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} /><div className="absolute left-0 top-0 h-full">{Sidebar}</div></div>}
+      {open && <div className="md:hidden fixed inset-0 z-40"><div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} /><div className="absolute left-0 top-0 h-full"><button aria-label="Fechar" onClick={() => setOpen(false)} className="absolute top-3 right-3 z-10 p-1 rounded-md hover:bg-zinc-100" data-testid="close-mobile-menu"><X className="w-5 h-5" /></button>{Sidebar}</div></div>}
       <div className="flex-1 min-w-0">
         <div className={`md:hidden sticky top-0 z-30 bg-white border-b border-zinc-200 p-3 flex items-center justify-between ${impersonating ? "mt-11" : ""}`}>
           <button onClick={() => setOpen(true)}><Menu className="w-5 h-5" /></button>

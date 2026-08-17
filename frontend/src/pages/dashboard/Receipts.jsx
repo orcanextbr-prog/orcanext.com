@@ -52,7 +52,7 @@ export default function Receipts() {
         <div><h1 className="font-display text-3xl font-black">Recibos</h1><p className="text-zinc-500 text-sm mt-1">Registre pagamentos recebidos.</p></div>
         <Button onClick={() => setOpen(true)} className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="new-receipt-btn"><Plus className="w-4 h-4 mr-2" />NOVO RECIBO</Button>
       </div>
-      <div className="mt-6 bg-white border border-zinc-200 rounded-xl overflow-hidden">
+      <div className="mt-6 bg-white border border-zinc-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500">
             <tr><th className="px-4 py-3">Nº</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Método</th><th className="px-4 py-3">Data</th><th className="px-4 py-3 text-right">PDF</th></tr>

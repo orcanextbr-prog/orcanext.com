@@ -39,7 +39,7 @@ export default function Products() {
         <Button onClick={() => { setForm(EMPTY); setOpen(true); }} className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="new-product-btn"><Plus className="w-4 h-4 mr-2" />NOVO PRODUTO</Button>
       </div>
       <Input placeholder="Pesquisar produto por nome ou código…" value={q} onChange={(e) => setQ(e.target.value)} className="mt-6 max-w-sm" data-testid="products-search" />
-      <div className="mt-4 bg-white border border-zinc-200 rounded-xl overflow-hidden">
+      <div className="mt-4 bg-white border border-zinc-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500">
             <tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3">SKU</th><th className="px-4 py-3">Un.</th><th className="px-4 py-3">Preço</th><th className="px-4 py-3 text-right">Ações</th></tr>
