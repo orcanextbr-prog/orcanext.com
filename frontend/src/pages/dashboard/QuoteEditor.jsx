@@ -206,14 +206,14 @@ export default function QuoteEditor() {
           </div>
 
           <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div className="font-display font-extrabold text-lg">Itens</div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" onClick={() => setSearchOpen(true)} data-testid="editor-search-open"><Search className="w-4 h-4 mr-2" />Pesquisar</Button>
                 <Button variant="outline" onClick={addCustom} data-testid="editor-add-custom"><Plus className="w-4 h-4 mr-2" />Item livre</Button>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase tracking-widest text-zinc-500">
                   <tr><th className="text-left py-2 w-8">#</th><th className="text-left">Descrição</th><th className="w-24">Qtd</th><th className="w-20">Un.</th><th className="w-32">Vlr. unit.</th><th className="w-32 text-right">Total</th><th className="w-10" /></tr>
@@ -233,6 +233,42 @@ export default function QuoteEditor() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile: each item as a card */}
+            <div className="md:hidden space-y-3" data-testid="items-mobile-list">
+              {items.length === 0 ? (
+                <div className="py-10 text-center text-zinc-400 text-sm">Adicione produtos ou serviços</div>
+              ) : items.map((it, i) => (
+                <div key={i} data-testid={`item-card-${i}`} className="border border-zinc-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">Item #{i + 1}</div>
+                    <Button variant="ghost" size="icon" onClick={() => removeItem(i)} data-testid={`item-remove-mobile-${i}`}><Trash2 className="w-4 h-4 text-red-500" /></Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Descrição</Label>
+                    <Input value={it.description} onChange={(e) => patchItem(i, "description", e.target.value)} data-testid={`item-desc-mobile-${i}`} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Quantidade</Label>
+                      <Input type="number" step="0.01" inputMode="decimal" value={it.quantity} onChange={(e) => patchItem(i, "quantity", e.target.value)} data-testid={`item-qty-mobile-${i}`} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Unidade</Label>
+                      <Input value={it.unit} onChange={(e) => patchItem(i, "unit", e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Valor unitário</Label>
+                    <Input type="number" step="0.01" inputMode="decimal" value={it.unit_price} onChange={(e) => patchItem(i, "unit_price", e.target.value)} data-testid={`item-price-mobile-${i}`} />
+                  </div>
+                  <div className="flex items-baseline justify-between pt-1 border-t border-zinc-100">
+                    <span className="text-xs uppercase tracking-widest text-zinc-500">Total do item</span>
+                    <span className="font-display text-xl font-black brand-text">{money(it.quantity * it.unit_price)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
