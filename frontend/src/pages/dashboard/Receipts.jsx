@@ -52,7 +52,7 @@ export default function Receipts() {
         <div><h1 className="font-display text-3xl font-black">Recibos</h1><p className="text-zinc-500 text-sm mt-1">Registre pagamentos recebidos.</p></div>
         <Button onClick={() => setOpen(true)} className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="new-receipt-btn"><Plus className="w-4 h-4 mr-2" />NOVO RECIBO</Button>
       </div>
-      <div className="mt-6 bg-white border border-zinc-200 rounded-xl overflow-x-auto">
+      <div className="mt-6 hidden md:block bg-white border border-zinc-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500">
             <tr><th className="px-4 py-3">Nº</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Método</th><th className="px-4 py-3">Data</th><th className="px-4 py-3 text-right">PDF</th></tr>
@@ -71,6 +71,33 @@ export default function Receipts() {
               ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: card list */}
+      <div className="mt-6 md:hidden space-y-3" data-testid="receipts-mobile-list">
+        {items.length === 0 ? (
+          <div className="bg-white border border-zinc-200 rounded-xl px-4 py-10 text-center text-zinc-400">Nenhum recibo ainda.</div>
+        ) : items.map((r) => (
+          <div key={r.id} data-testid={`receipt-card-${r.number}`} className="bg-white border border-zinc-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">Recibo #{r.number}</div>
+                <div className="mt-1 font-display font-extrabold text-lg truncate">{clients.find((c) => c.id === r.client_id)?.name || "—"}</div>
+              </div>
+              <span className="text-xs font-bold uppercase tracking-widest text-zinc-500 shrink-0">{r.payment_method}</span>
+            </div>
+            <div className="mt-3 flex items-baseline justify-between gap-3">
+              <div className="text-2xl font-display font-black">{money(r.amount)}</div>
+              <div className="text-xs text-zinc-500 whitespace-nowrap">{r.payment_date}</div>
+            </div>
+            <div className="mt-4">
+              <Button onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/receipts/${r.id}/pdf`, "_blank")}
+                      className="w-full brand-bg hover:bg-[#008a02] text-white font-bold" data-testid={`receipt-card-pdf-${r.number}`}>
+                <Download className="w-4 h-4 mr-2" /> VER RECIBO
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>

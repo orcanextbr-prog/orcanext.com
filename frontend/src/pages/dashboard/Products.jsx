@@ -39,7 +39,7 @@ export default function Products() {
         <Button onClick={() => { setForm(EMPTY); setOpen(true); }} className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="new-product-btn"><Plus className="w-4 h-4 mr-2" />NOVO PRODUTO</Button>
       </div>
       <Input placeholder="Pesquisar produto por nome ou código…" value={q} onChange={(e) => setQ(e.target.value)} className="mt-6 max-w-sm" data-testid="products-search" />
-      <div className="mt-4 bg-white border border-zinc-200 rounded-xl overflow-x-auto">
+      <div className="mt-4 hidden md:block bg-white border border-zinc-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-left text-xs uppercase tracking-widest text-zinc-500">
             <tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3">SKU</th><th className="px-4 py-3">Un.</th><th className="px-4 py-3">Preço</th><th className="px-4 py-3 text-right">Ações</th></tr>
@@ -60,6 +60,31 @@ export default function Products() {
               ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: card list */}
+      <div className="mt-4 md:hidden space-y-3" data-testid="products-mobile-list">
+        {items.length === 0 ? (
+          <div className="bg-white border border-zinc-200 rounded-xl px-4 py-10 text-center text-zinc-400">Nenhum produto ainda.</div>
+        ) : items.map((p) => (
+          <div key={p.id} data-testid={`product-card-${p.id}`} className="bg-white border border-zinc-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-display font-extrabold text-lg truncate">{p.name}</div>
+                {p.sku && <div className="text-xs text-zinc-500 mt-0.5">SKU: {p.sku}</div>}
+                {p.category && <div className="text-xs text-zinc-500">{p.category}</div>}
+              </div>
+              <span className="text-xs font-bold uppercase tracking-widest text-zinc-500 shrink-0">{p.unit}</span>
+            </div>
+            <div className="mt-3 text-2xl font-display font-black">{money(p.price)}</div>
+            <div className="mt-4 flex gap-2">
+              <Button onClick={() => { setForm({ ...EMPTY, ...p }); setOpen(true); }} className="flex-1 brand-bg hover:bg-[#008a02] text-white font-bold" data-testid={`product-card-edit-${p.id}`}>
+                <Pencil className="w-4 h-4 mr-2" /> VER PRODUTO
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => remove(p)} data-testid={`product-card-delete-${p.id}`}><Trash2 className="w-4 h-4 text-red-500" /></Button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
