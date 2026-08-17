@@ -20,6 +20,8 @@ import MyCompany from "@/pages/dashboard/MyCompany";
 import MyPlan from "@/pages/dashboard/MyPlan";
 import PublicQuote from "@/pages/PublicQuote";
 import Admin from "@/pages/Admin";
+import BillingSuccess from "@/pages/BillingSuccess";
+import BillingCancel from "@/pages/BillingCancel";
 
 function Protected({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -51,6 +53,8 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/q/:token" element={<PublicQuote />} />
+          <Route path="/billing/success" element={<Protected><BillingSuccess /></Protected>} />
+          <Route path="/billing/cancel" element={<Protected><BillingCancel /></Protected>} />
 
           <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
 

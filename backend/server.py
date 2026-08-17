@@ -12,6 +12,7 @@ import jwt
 import bcrypt
 import secrets
 import logging
+import stripe
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal, Any
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
@@ -30,6 +31,15 @@ JWT_ALGO = "HS256"
 FREE_QUOTE_LIMIT = int(os.environ.get("FREE_QUOTE_LIMIT", "15"))
 PRO_MONTHLY_PRICE = float(os.environ.get("PRO_MONTHLY_PRICE", "49.90"))
 PRO_ANNUAL_PRICE = float(os.environ.get("PRO_ANNUAL_PRICE", "478.80"))
+
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_MODE = os.environ.get("STRIPE_MODE", "test")
+STRIPE_LOOKUP_MONTHLY = "orcanext_pro_monthly"
+STRIPE_LOOKUP_YEARLY = "orcanext_pro_yearly"
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -288,6 +298,10 @@ async def startup():
     await db.products.create_index([("company_id", 1)])
     await db.services.create_index([("company_id", 1)])
     await db.quote_usage.create_index([("company_id", 1), ("billing_period_start", 1)])
+    await db.stripe_webhook_events.create_index("stripe_event_id", unique=True)
+    await db.payments.create_index([("user_id", 1), ("created_at", -1)])
+    await db.payments.create_index("stripe_session_id")
+    await db.users.create_index("stripe_customer_id", sparse=True)
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@orcanext.com").lower()
     admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@2026")
@@ -1118,28 +1132,290 @@ async def get_plan(user: dict = Depends(get_current_user)):
         "plan": user.get("plan", "FREE"),
         "prices": {"monthly": PRO_MONTHLY_PRICE, "annual": PRO_ANNUAL_PRICE},
         "free_limit": await get_free_limit(),
+        "billing": {
+            "stripe_customer_id": user.get("stripe_customer_id"),
+            "stripe_subscription_id": user.get("stripe_subscription_id"),
+            "subscription_status": user.get("subscription_status"),
+            "billing_cycle": user.get("billing_cycle"),
+            "current_period_end": user.get("current_period_end"),
+            "cancel_at_period_end": bool(user.get("cancel_at_period_end")),
+        },
     }
 
 
 @api.post("/plan/upgrade")
-async def upgrade_plan(request: Request, user: dict = Depends(get_current_user)):
-    """Mock upgrade — in production this would be triggered by billing webhook."""
-    await db.users.update_one({"id": user["id"]}, {"$set": {"plan": "PROFESSIONAL"}})
-    company = await db.companies.find_one({"owner_id": user["id"]})
-    if company:
-        await audit(company["id"], user["id"], "PLAN_UPGRADED", "user", user["id"], request,
-                    metadata={"to": "PROFESSIONAL"})
-    return {"ok": True, "plan": "PROFESSIONAL"}
+async def upgrade_plan_deprecated():
+    """Deprecated mock endpoint. Real upgrades now go through Stripe Checkout.
+    Kept only to return a 410 so any stale frontend code fails loudly instead of
+    silently activating PRO."""
+    raise HTTPException(410, "Endpoint descontinuado. Use /api/stripe/checkout para assinar o plano Profissional.")
 
 
 @api.post("/plan/downgrade")
 async def downgrade_plan(request: Request, user: dict = Depends(get_current_user)):
-    await db.users.update_one({"id": user["id"]}, {"$set": {"plan": "FREE"}})
+    """User-initiated downgrade. Cancels Stripe subscription at period end if any."""
+    sub_id = user.get("stripe_subscription_id")
+    if sub_id:
+        try:
+            stripe.Subscription.modify(sub_id, cancel_at_period_end=True)
+        except stripe.error.StripeError as e:
+            logger.warning("Stripe cancel failed: %s", e)
+    await db.users.update_one({"id": user["id"]}, {"$set": {"cancel_at_period_end": True}})
     company = await db.companies.find_one({"owner_id": user["id"]})
     if company:
-        await audit(company["id"], user["id"], "PLAN_DOWNGRADED", "user", user["id"], request,
-                    metadata={"to": "FREE"})
-    return {"ok": True, "plan": "FREE"}
+        await audit(company["id"], user["id"], "PLAN_DOWNGRADE_SCHEDULED", "user", user["id"], request,
+                    metadata={"subscription_id": sub_id})
+    # If they have no Stripe subscription (legacy demo users), downgrade immediately.
+    if not sub_id:
+        await db.users.update_one({"id": user["id"]}, {"$set": {"plan": "FREE"}})
+        return {"ok": True, "plan": "FREE", "immediate": True}
+    return {"ok": True, "cancel_at_period_end": True}
+
+
+# ---------- Stripe billing ----------
+class StripeCheckoutIn(BaseModel):
+    billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    origin_url: str
+
+
+@api.post("/stripe/checkout")
+async def stripe_create_checkout(payload: StripeCheckoutIn, user: dict = Depends(get_current_user)):
+    """Create a Stripe Checkout Session for a recurring subscription."""
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(503, "Billing indisponível: Stripe não configurado")
+    lookup = STRIPE_LOOKUP_MONTHLY if payload.billing_cycle == "monthly" else STRIPE_LOOKUP_YEARLY
+    prices = stripe.Price.list(lookup_keys=[lookup], active=True, limit=1).data
+    if not prices:
+        raise HTTPException(500, f"Preço Stripe não encontrado: {lookup}")
+    price = prices[0]
+
+    # Reuse or create the Stripe Customer for this user
+    customer_id = user.get("stripe_customer_id")
+    if not customer_id:
+        cust = stripe.Customer.create(
+            email=user["email"], name=user.get("name"),
+            metadata={"orcanext_user_id": user["id"]},
+        )
+        customer_id = cust.id
+        await db.users.update_one({"id": user["id"]}, {"$set": {"stripe_customer_id": customer_id}})
+
+    origin = payload.origin_url.rstrip("/")
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        customer=customer_id,
+        line_items=[{"price": price.id, "quantity": 1}],
+        success_url=f"{origin}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{origin}/billing/cancel",
+        allow_promotion_codes=True,
+        metadata={
+            "orcanext_user_id": user["id"],
+            "billing_cycle": payload.billing_cycle,
+            "lookup_key": lookup,
+        },
+        subscription_data={
+            "metadata": {
+                "orcanext_user_id": user["id"],
+                "billing_cycle": payload.billing_cycle,
+            },
+        },
+    )
+    await db.payments.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "stripe_customer_id": customer_id,
+        "stripe_session_id": session.id,
+        "billing_cycle": payload.billing_cycle,
+        "amount": (price.unit_amount or 0) / 100.0,
+        "currency": price.currency,
+        "status": "initiated",
+        "payment_status": "pending",
+        "created_at": iso(now_utc()),
+        "updated_at": iso(now_utc()),
+    })
+    return {"checkout_url": session.url, "session_id": session.id}
+
+
+@api.get("/stripe/status/{session_id}")
+async def stripe_status(session_id: str, user: dict = Depends(get_current_user)):
+    """Polled by the /billing/success page. Idempotent — same guard as webhook."""
+    rec = await db.payments.find_one({"stripe_session_id": session_id, "user_id": user["id"]})
+    if not rec:
+        raise HTTPException(404, "Transação não encontrada")
+    if rec.get("payment_status") != "paid" and STRIPE_SECRET_KEY:
+        try:
+            s = stripe.checkout.Session.retrieve(session_id)
+            if s.status == "complete" and s.payment_status == "paid":
+                # Fetch subscription and sync plan in-line (guarded to be idempotent).
+                sub = stripe.Subscription.retrieve(s.subscription) if s.subscription else None
+                await _apply_subscription_to_user(user["id"], sub)
+                await db.payments.update_one(
+                    {"stripe_session_id": session_id, "payment_status": {"$ne": "paid"}},
+                    {"$set": {"status": "completed", "payment_status": "paid",
+                              "stripe_subscription_id": s.subscription,
+                              "updated_at": iso(now_utc())}},
+                )
+                rec = await db.payments.find_one({"stripe_session_id": session_id})
+        except stripe.error.StripeError:
+            pass
+    fresh = await db.users.find_one({"id": user["id"]}, {"plan": 1, "_id": 0})
+    return {
+        "session_id": session_id,
+        "status": rec.get("status"),
+        "payment_status": rec.get("payment_status"),
+        "plan": fresh.get("plan") if fresh else user.get("plan"),
+    }
+
+
+@api.post("/stripe/customer-portal")
+async def stripe_customer_portal(payload: dict, user: dict = Depends(get_current_user)):
+    """Create a Stripe Customer Portal session so the user can manage billing."""
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(503, "Billing indisponível")
+    customer_id = user.get("stripe_customer_id")
+    if not customer_id:
+        raise HTTPException(400, "Nenhuma assinatura Stripe encontrada para esta conta")
+    origin = (payload.get("origin_url") or "").rstrip("/") or "https://app.orcanext.com"
+    session = stripe.billing_portal.Session.create(
+        customer=customer_id, return_url=f"{origin}/dashboard/plan",
+    )
+    return {"portal_url": session.url}
+
+
+async def _apply_subscription_to_user(user_id: str, sub) -> None:
+    """Sync a Stripe Subscription object onto the OrçaNext user record.
+    Active-like statuses grant PROFESSIONAL. Ended statuses drop back to FREE.
+    Note: In recent Stripe API versions, `current_period_end` lives on the
+    SubscriptionItem, not the Subscription — read both to stay compatible."""
+    if not sub:
+        return
+    sub_dict = sub.to_dict() if hasattr(sub, "to_dict") else dict(sub)
+    status = sub_dict.get("status")
+    cancel_at_pe = bool(sub_dict.get("cancel_at_period_end"))
+    period_end = sub_dict.get("current_period_end")
+    price_id = None
+    interval = None
+    items_data = ((sub_dict.get("items") or {}).get("data") or [])
+    if items_data:
+        first = items_data[0]
+        first_price = first.get("price") or {}
+        price_id = first_price.get("id")
+        interval = (first_price.get("recurring") or {}).get("interval")
+        if not period_end:
+            period_end = first.get("current_period_end")
+    active_like = status in ("active", "trialing", "past_due")
+    ended = status in ("canceled", "incomplete_expired", "unpaid")
+    update = {
+        "stripe_subscription_id": sub_dict.get("id"),
+        "stripe_price_id": price_id,
+        "subscription_status": status,
+        "billing_cycle": "yearly" if interval == "year" else "monthly",
+        "current_period_end": datetime.fromtimestamp(period_end, tz=timezone.utc).isoformat() if period_end else None,
+        "cancel_at_period_end": cancel_at_pe,
+        "updated_at": iso(now_utc()),
+    }
+    if active_like:
+        update["plan"] = "PROFESSIONAL"
+    elif ended:
+        update["plan"] = "FREE"
+    await db.users.update_one({"id": user_id}, {"$set": update})
+
+
+@api.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Stripe posts subscription lifecycle events here. Idempotent via
+    stripe_webhook_events (unique index on stripe_event_id)."""
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(503, "Webhook não configurado")
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(400, "Assinatura inválida")
+    except Exception as e:
+        raise HTTPException(400, f"Payload inválido: {e}")
+
+    event_id = event["id"]
+    event_type = event["type"]
+    # Idempotency: bail if we've already processed this event
+    existing = await db.stripe_webhook_events.find_one({"stripe_event_id": event_id})
+    if existing and existing.get("processed"):
+        return {"received": True, "duplicate": True}
+    await db.stripe_webhook_events.update_one(
+        {"stripe_event_id": event_id},
+        {"$setOnInsert": {
+            "stripe_event_id": event_id, "event_type": event_type,
+            "processed": False, "created_at": iso(now_utc()),
+        }},
+        upsert=True,
+    )
+    try:
+        obj = event["data"]["object"]
+        if event_type == "checkout.session.completed":
+            user_id = (obj.get("metadata") or {}).get("orcanext_user_id")
+            sub_id = obj.get("subscription")
+            if user_id and sub_id:
+                sub = stripe.Subscription.retrieve(sub_id)
+                await _apply_subscription_to_user(user_id, sub)
+            await db.payments.update_one(
+                {"stripe_session_id": obj["id"]},
+                {"$set": {"status": "completed", "payment_status": obj.get("payment_status", "paid"),
+                          "stripe_subscription_id": sub_id, "updated_at": iso(now_utc())}},
+            )
+        elif event_type in ("customer.subscription.created", "customer.subscription.updated"):
+            user_id = (obj.get("metadata") or {}).get("orcanext_user_id")
+            if not user_id:
+                # Fallback: look up user by customer id
+                u = await db.users.find_one({"stripe_customer_id": obj.get("customer")})
+                user_id = u["id"] if u else None
+            if user_id:
+                await _apply_subscription_to_user(user_id, obj)
+        elif event_type == "customer.subscription.deleted":
+            u = await db.users.find_one({"stripe_customer_id": obj.get("customer")})
+            if u:
+                await db.users.update_one({"id": u["id"]}, {"$set": {
+                    "plan": "FREE", "subscription_status": "canceled",
+                    "cancel_at_period_end": False, "updated_at": iso(now_utc()),
+                }})
+        elif event_type == "invoice.paid":
+            u = await db.users.find_one({"stripe_customer_id": obj.get("customer")})
+            if u:
+                await db.payments.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "user_id": u["id"],
+                    "stripe_customer_id": obj.get("customer"),
+                    "stripe_invoice_id": obj.get("id"),
+                    "stripe_subscription_id": obj.get("subscription"),
+                    "stripe_payment_intent_id": obj.get("payment_intent"),
+                    "amount": (obj.get("amount_paid") or 0) / 100.0,
+                    "currency": obj.get("currency"),
+                    "status": "paid", "payment_status": "paid",
+                    "payment_type": "invoice",
+                    "paid_at": iso(now_utc()),
+                    "created_at": iso(now_utc()),
+                })
+                # Ensure user is on PROFESSIONAL after successful invoice
+                if obj.get("subscription"):
+                    sub = stripe.Subscription.retrieve(obj["subscription"])
+                    await _apply_subscription_to_user(u["id"], sub)
+        elif event_type == "invoice.payment_failed":
+            u = await db.users.find_one({"stripe_customer_id": obj.get("customer")})
+            if u:
+                await db.users.update_one({"id": u["id"]},
+                    {"$set": {"subscription_status": "past_due", "updated_at": iso(now_utc())}})
+        # other events (payment_intent.*, customer.created) are acknowledged but no-op
+        await db.stripe_webhook_events.update_one(
+            {"stripe_event_id": event_id},
+            {"$set": {"processed": True, "processed_at": iso(now_utc())}},
+        )
+    except Exception as e:
+        await db.stripe_webhook_events.update_one(
+            {"stripe_event_id": event_id},
+            {"$set": {"processing_error": str(e), "updated_at": iso(now_utc())}},
+        )
+        logger.exception("Stripe webhook processing failed: %s", event_type)
+        raise HTTPException(500, "Webhook processing failed")
+    return {"received": True}
 
 
 # ---------- Admin ----------

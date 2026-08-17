@@ -32,11 +32,17 @@ SaaS brasileiro multi-tenant para criar, enviar, aprovar e obter aceite eletrôn
 - **Admin v2** (RBAC USER/ADMIN/SUPER_ADMIN): bloquear/promover usuários, alterar plano, configurações da plataforma (`free_limit`, `pro_monthly`, `pro_annual`, `support_email`), auditoria completa, próximos do limite.
 - **Follow-up Inteligente** via Resend: lembretes automáticos para orçamentos enviados (D+3, D+7, máx 2 envios).
 - **Impersonation (Fev/2026)**: SUPER_ADMIN pode entrar em qualquer conta de usuário via botão "Entrar como" na aba Usuários. Banner preto "MODO ADMINISTRADOR" fica fixo no topo do dashboard com botão "Sair do modo suporte". Ações auditadas (`IMPERSONATE_START` / `IMPERSONATE_END`).
-- **Limite Gratuito atualizado (Fev/2026)**: agora **15 orçamentos/mês** (era 50). Configuração centralizada em `platform_settings.free_limit` lida via `get_free_limit()` helper. Enforcement 100% backend (HTTP 402). Threshold "próximo do limite" recalculado dinamicamente para 80% do limite ativo (12/15). Landing page redesenhada:
-  - Hero mostra oferta comercial ("Comece grátis com até 15 orçamentos/mês" + "R$ 49,90/mês") e CTA duplo (COMEÇAR GRÁTIS / QUERO ORÇAMENTOS ILIMITADOS).
-  - Nova seção **UpgradeCallout** ("15 orçamentos por mês são suficientes para começar" + R$ 49,90 destacado) entre Benefícios e Planos.
-  - Seção Planos com preço R$ 49,90 grande e visível (fix `.font-display` override via `!text-white`), 13 itens no Pro, badge "MAIS ESCOLHIDO".
-  - FAQ + CTA final atualizados com 15/R$ 49,90.
+- **Limite Gratuito atualizado (Fev/2026)**: agora **15 orçamentos/mês** (era 50). Configuração centralizada em `platform_settings.free_limit` lida via `get_free_limit()` helper. Enforcement 100% backend (HTTP 402). Threshold "próximo do limite" recalculado dinamicamente para 80% do limite ativo (12/15). Landing page redesenhada.
+- **Stripe Billing REAL (Fev/2026)**:
+  - Sandbox Stripe provisionado via Emergent (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` em `.env`).
+  - `setup_stripe.py` idempotente cria produto "OrçaNext Profissional" com dois preços BRL: `orcanext_pro_monthly` (R$ 49,90/mês) e `orcanext_pro_yearly` (R$ 478,80/ano).
+  - Endpoints: `POST /api/stripe/checkout`, `GET /api/stripe/status/{sid}`, `POST /api/stripe/customer-portal`, `POST /api/stripe/webhook`.
+  - Webhook valida assinatura, é idempotente via `stripe_webhook_events` (índice único), trata `checkout.session.completed`, `customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed`.
+  - User document ganhou: `stripe_customer_id`, `stripe_subscription_id`, `stripe_price_id`, `subscription_status`, `billing_cycle`, `current_period_end`, `cancel_at_period_end`.
+  - Frontend `/dashboard/plan`: toggle mensal/anual, botão real de checkout Stripe, banner "past_due", banner cancelamento programado, botão "Gerenciar Assinatura" (Customer Portal).
+  - Novas páginas `/billing/success` (polling) e `/billing/cancel`. Frontend NUNCA ativa PRO por conta própria — apenas backend via webhook.
+  - Endpoint mock `/api/plan/upgrade` retorna 410 (obsoleto). `/api/plan/downgrade` agora chama `stripe.Subscription.modify(cancel_at_period_end=True)`.
+  - `_apply_subscription_to_user()` centraliza sync compatível com Stripe API 2025 (`current_period_end` na SubscriptionItem).
 
 ## Test Results
 - iteration_1: Backend 100% ✓ · Frontend 100% ✓
@@ -44,7 +50,8 @@ SaaS brasileiro multi-tenant para criar, enviar, aprovar e obter aceite eletrôn
 
 ## Backlog (P1/P2)
 - P1 — **Central de Suporte**: tickets abertos pelo usuário, respondidos em `/admin/support`.
-- P1 — Integração real de billing (Stripe) com webhooks e estados ACTIVE/PAST_DUE/CANCELED.
+- P1 — **Admin Billing dashboard**: aba com assinaturas ativas/canceladas, últimos pagamentos, links "Ver no Stripe".
+- P1 — **Stripe live mode**: usuário precisa fazer KYC no `onboarding_url` do Stripe; sistema auto-troca para live keys.
 - P2 — Funil de conversão detalhado no Admin (Visitor → Signup → 1º Orçamento → PRO).
 - P2 — 2FA por e-mail.
 - P2 — Notificações e-mail/WhatsApp (visualizado/aprovado/próximo de expirar).
