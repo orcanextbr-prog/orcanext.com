@@ -34,7 +34,7 @@ export default function DashboardLayout() {
   }, []);
 
   const pct = usage && usage.limit ? Math.min(100, (usage.used / usage.limit) * 100) : 0;
-  const near = usage && usage.limit && usage.used >= 40 && usage.used < usage.limit;
+  const near = usage && usage.limit && usage.used >= Math.ceil(usage.limit * 0.8) && usage.used < usage.limit;
 
   const Sidebar = (
     <aside className="w-64 bg-white border-r border-zinc-200 min-h-screen flex flex-col">
@@ -74,7 +74,7 @@ export default function DashboardLayout() {
                 <div className="mt-3 text-xs text-red-600 font-semibold">Limite atingido este mês.</div>
               )}
               {near && !usage.blocked && (
-                <div className="mt-3 text-xs text-zinc-600">Você está próximo do limite.</div>
+                <div className="mt-3 text-xs text-zinc-600">Você está próximo do limite de {usage.limit} orçamentos deste mês.</div>
               )}
               <Link to="/dashboard/plan">
                 <Button size="sm" className="w-full mt-3 brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="usage-upgrade">

@@ -32,6 +32,11 @@ SaaS brasileiro multi-tenant para criar, enviar, aprovar e obter aceite eletrôn
 - **Admin v2** (RBAC USER/ADMIN/SUPER_ADMIN): bloquear/promover usuários, alterar plano, configurações da plataforma (`free_limit`, `pro_monthly`, `pro_annual`, `support_email`), auditoria completa, próximos do limite.
 - **Follow-up Inteligente** via Resend: lembretes automáticos para orçamentos enviados (D+3, D+7, máx 2 envios).
 - **Impersonation (Fev/2026)**: SUPER_ADMIN pode entrar em qualquer conta de usuário via botão "Entrar como" na aba Usuários. Banner preto "MODO ADMINISTRADOR" fica fixo no topo do dashboard com botão "Sair do modo suporte". Ações auditadas (`IMPERSONATE_START` / `IMPERSONATE_END`).
+- **Limite Gratuito atualizado (Fev/2026)**: agora **15 orçamentos/mês** (era 50). Configuração centralizada em `platform_settings.free_limit` lida via `get_free_limit()` helper. Enforcement 100% backend (HTTP 402). Threshold "próximo do limite" recalculado dinamicamente para 80% do limite ativo (12/15). Landing page redesenhada:
+  - Hero mostra oferta comercial ("Comece grátis com até 15 orçamentos/mês" + "R$ 49,90/mês") e CTA duplo (COMEÇAR GRÁTIS / QUERO ORÇAMENTOS ILIMITADOS).
+  - Nova seção **UpgradeCallout** ("15 orçamentos por mês são suficientes para começar" + R$ 49,90 destacado) entre Benefícios e Planos.
+  - Seção Planos com preço R$ 49,90 grande e visível (fix `.font-display` override via `!text-white`), 13 itens no Pro, badge "MAIS ESCOLHIDO".
+  - FAQ + CTA final atualizados com 15/R$ 49,90.
 
 ## Test Results
 - iteration_1: Backend 100% ✓ · Frontend 100% ✓

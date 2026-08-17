@@ -32,7 +32,7 @@ export default function Register() {
           <span className="text-xl font-display font-extrabold">OrçaNext</span>
         </Link>
         <div>
-          <h2 className="font-display font-black text-5xl leading-none tracking-tighter">50 orçamentos<br />grátis por mês.</h2>
+          <h2 className="font-display font-black text-5xl leading-none tracking-tighter">15 orçamentos<br />grátis por mês.</h2>
           <p className="mt-4 text-white/90">Comece gratuitamente. Sem cartão. Sem enrolação.</p>
         </div>
         <div className="text-sm text-white/70">© {new Date().getFullYear()} OrçaNext</div>

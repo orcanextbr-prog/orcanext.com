@@ -224,7 +224,7 @@ export default function Admin() {
 
           <TabsContent value="settings" className="mt-4">
             <div className="bg-white border border-zinc-200 rounded-xl p-6 max-w-lg space-y-4">
-              <div><label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Limite mensal (Gratuito)</label>
+              <div><label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Limite mensal (Gratuito) — padrão: 15 orçamentos/mês</label>
                 <Input type="number" value={settings.free_limit || ""} onChange={(e) => setSettings({ ...settings, free_limit: e.target.value })} data-testid="admin-set-limit" /></div>
               <div><label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Preço mensal Profissional (R$)</label>
                 <Input type="number" step="0.01" value={settings.pro_monthly || ""} onChange={(e) => setSettings({ ...settings, pro_monthly: e.target.value })} /></div>

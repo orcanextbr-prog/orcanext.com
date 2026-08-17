@@ -49,7 +49,7 @@ export default function MyPlan() {
           <div className="mt-3 font-display text-5xl font-black">R$ 0</div>
           <div className="text-zinc-500">Ideal para começar.</div>
           <ul className="mt-6 space-y-2 text-sm">
-            {["50 novos orçamentos por mês", "Clientes, produtos e serviços", "Link público + PDF", "Aceite eletrônico", "Marca d'água"].map((f) => (
+            {["Até 15 novos orçamentos por mês", "Clientes, produtos e serviços", "Link público + PDF", "Aceite eletrônico", "Marca d'água"].map((f) => (
               <li key={f} className="flex gap-2"><Check className="w-4 h-4 brand-text mt-0.5" />{f}</li>
             ))}
           </ul>

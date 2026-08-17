@@ -146,8 +146,8 @@ export default function QuotesList() {
 
       <Dialog open={blockOpen} onOpenChange={setBlockOpen}>
         <DialogContent data-testid="limit-dialog">
-          <DialogHeader><DialogTitle className="font-display text-2xl">Você atingiu o limite de 50 orçamentos deste mês.</DialogTitle></DialogHeader>
-          <p className="text-zinc-600">Você poderá criar novos orçamentos no próximo ciclo ou pode fazer upgrade para o plano Profissional e criar orçamentos ilimitados.</p>
+          <DialogHeader><DialogTitle className="font-display text-2xl">Você atingiu o limite de {usage?.limit || 15} orçamentos deste mês.</DialogTitle></DialogHeader>
+          <p className="text-zinc-600">Continue criando sem limites com o <b>OrçaNext Profissional</b>. Por <b className="brand-text">R$ 49,90/mês</b> você tem orçamentos ilimitados.</p>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setBlockOpen(false)} data-testid="limit-stay">CONTINUAR NO GRATUITO</Button>
             <Link to="/dashboard/plan"><Button className="brand-bg hover:bg-[#008a02] text-white font-bold" data-testid="limit-upgrade">ASSINAR PROFISSIONAL</Button></Link>

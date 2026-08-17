@@ -27,7 +27,7 @@ import asyncio
 # ---------- Config ----------
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGO = "HS256"
-FREE_QUOTE_LIMIT = int(os.environ.get("FREE_QUOTE_LIMIT", "50"))
+FREE_QUOTE_LIMIT = int(os.environ.get("FREE_QUOTE_LIMIT", "15"))
 PRO_MONTHLY_PRICE = float(os.environ.get("PRO_MONTHLY_PRICE", "49.90"))
 PRO_ANNUAL_PRICE = float(os.environ.get("PRO_ANNUAL_PRICE", "478.80"))
 
@@ -715,25 +715,37 @@ async def next_quote_number(company_id: str) -> str:
     return f"{prefix}{n:04d}"
 
 
+async def get_free_limit() -> int:
+    """Centralized read of the free plan monthly limit.
+    Reads from platform_settings.free_limit, falls back to FREE_QUOTE_LIMIT env default (15)."""
+    s = await db.platform_settings.find_one({"id": "main"}) or {}
+    try:
+        return int(s.get("free_limit") or FREE_QUOTE_LIMIT)
+    except (TypeError, ValueError):
+        return FREE_QUOTE_LIMIT
+
+
 async def check_free_limit(user: dict, company: dict):
     if user.get("plan") == "PROFESSIONAL":
         return
     used = await get_usage_count(company["id"])
-    if used >= FREE_QUOTE_LIMIT:
-        raise HTTPException(402, f"Limite atingido: {used}/{FREE_QUOTE_LIMIT} orçamentos deste mês. Faça upgrade para o Profissional.")
+    limit = await get_free_limit()
+    if used >= limit:
+        raise HTTPException(402, f"Limite atingido: {used}/{limit} orçamentos deste mês. Faça upgrade para o Profissional.")
 
 
 @api.get("/quotes/usage")
 async def quotes_usage(user: dict = Depends(get_current_user), company: dict = Depends(get_company)):
     used = await get_usage_count(company["id"])
     start, end = month_period()
+    limit = await get_free_limit()
     return {
         "used": used,
-        "limit": FREE_QUOTE_LIMIT if user.get("plan") != "PROFESSIONAL" else None,
+        "limit": limit if user.get("plan") != "PROFESSIONAL" else None,
         "plan": user.get("plan", "FREE"),
         "period_start": iso(start),
         "period_end": iso(end),
-        "blocked": user.get("plan") != "PROFESSIONAL" and used >= FREE_QUOTE_LIMIT,
+        "blocked": user.get("plan") != "PROFESSIONAL" and used >= limit,
     }
 
 
@@ -1105,7 +1117,7 @@ async def get_plan(user: dict = Depends(get_current_user)):
     return {
         "plan": user.get("plan", "FREE"),
         "prices": {"monthly": PRO_MONTHLY_PRICE, "annual": PRO_ANNUAL_PRICE},
-        "free_limit": FREE_QUOTE_LIMIT,
+        "free_limit": await get_free_limit(),
     }
 
 
@@ -1205,10 +1217,13 @@ async def admin_set_plan(uid: str, body: dict, request: Request, admin: dict = D
 @api.get("/admin/near-limit")
 async def admin_near_limit(admin: dict = Depends(get_admin)):
     start, end = month_period()
+    limit = await get_free_limit()
+    # "Near" threshold: 80% of the current free limit (rounded up), min 1.
+    threshold = max(1, (limit * 4 + 4) // 5)
     pipeline = [
         {"$match": {"event_type": "QUOTE_CREATED", "billing_period_start": iso(start)}},
         {"$group": {"_id": "$company_id", "used": {"$sum": 1}}},
-        {"$match": {"used": {"$gte": 40}}},
+        {"$match": {"used": {"$gte": threshold}}},
         {"$sort": {"used": -1}},
     ]
     rows = await db.quote_usage.aggregate(pipeline).to_list(200)
@@ -1221,7 +1236,7 @@ async def admin_near_limit(admin: dict = Depends(get_admin)):
         if owner and owner.get("plan") == "PROFESSIONAL":
             continue
         result.append({"company_id": r["_id"], "company_name": comp.get("name"),
-                        "used": r["used"], "limit": FREE_QUOTE_LIMIT,
+                        "used": r["used"], "limit": limit,
                         "user_email": owner["email"] if owner else None})
     return result
 

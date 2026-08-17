@@ -49,16 +49,20 @@ function Hero() {
           <p className="mt-6 text-lg text-zinc-600 leading-relaxed max-w-xl">
             Com o OrçaNext, você cria orçamentos profissionais, envia por link ou PDF, recebe a aprovação do cliente, coleta aceite eletrônico e organiza seus recebimentos.
           </p>
-          <div className="mt-9 flex flex-wrap gap-3">
+          <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-4 max-w-xl">
+            <p className="text-sm text-zinc-700"><b className="text-black">Comece grátis com até 15 orçamentos por mês.</b></p>
+            <p className="text-sm text-zinc-600 mt-1">Precisa de mais? Tenha <b className="brand-text">orçamentos ilimitados por R$ 49,90/mês</b>.</p>
+          </div>
+          <div className="mt-6 flex flex-wrap gap-3">
             <Link to="/register" data-testid="hero-cta-primary">
               <Button className="brand-bg hover:bg-[#008a02] text-white font-bold px-7 h-12 text-base">COMEÇAR GRÁTIS <ArrowRight className="ml-2 h-4 w-4" /></Button>
             </Link>
-            <a href="#como-funciona" data-testid="hero-cta-secondary">
-              <Button variant="outline" className="h-12 px-7 border-black text-black font-bold hover:bg-zinc-50">CONHECER O ORÇANEXT</Button>
+            <a href="#planos" data-testid="hero-cta-secondary">
+              <Button variant="outline" className="h-12 px-7 border-black text-black font-bold hover:bg-zinc-50">QUERO ORÇAMENTOS ILIMITADOS</Button>
             </a>
           </div>
           <div className="mt-8 flex items-center gap-6 text-sm text-zinc-500">
-            <div className="flex items-center gap-2"><Check className="w-4 h-4 brand-text" /> 50 orçamentos/mês grátis</div>
+            <div className="flex items-center gap-2"><Check className="w-4 h-4 brand-text" /> 15 orçamentos/mês grátis</div>
             <div className="flex items-center gap-2"><Check className="w-4 h-4 brand-text" /> Sem cartão</div>
           </div>
         </div>
@@ -193,15 +197,32 @@ function Pricing() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="max-w-2xl">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-3">Planos</div>
-          <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight">Comece grátis. Cresça quando quiser.</h2>
+          <h2 className="font-display text-4xl md:text-5xl font-black tracking-tight">Escolha o plano ideal para o seu negócio</h2>
+          <p className="mt-3 text-zinc-600 text-lg">Comece grátis e evolua quando precisar.</p>
         </div>
         <div className="mt-10 grid md:grid-cols-2 gap-6">
-          <div className="bg-white border border-zinc-200 rounded-2xl p-8">
+          {/* Gratuito */}
+          <div className="bg-white border border-zinc-200 rounded-2xl p-8" data-testid="pricing-free-card">
             <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">Gratuito</div>
-            <div className="mt-2 font-display text-5xl font-black">R$ 0</div>
-            <div className="text-zinc-500 mt-1">Ideal para começar.</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <div className="font-display text-5xl font-black">R$ 0</div>
+              <div className="text-zinc-500">/para começar</div>
+            </div>
+            <div className="text-zinc-500 mt-1">Perfeito para dar os primeiros passos.</div>
             <div className="mt-6 space-y-2 text-sm">
-              {["50 novos orçamentos por mês", "Clientes, produtos e serviços ilimitados", "Link público + PDF", "Aprovação e aceite eletrônico", "Marca d'água “Criado com OrçaNext”"].map((f) => (
+              {[
+                "Até 15 orçamentos por mês",
+                "Cadastro de clientes",
+                "Cadastro de produtos",
+                "Cadastro de serviços",
+                "Pesquisa de produtos e serviços",
+                "Link público",
+                "PDF",
+                "Aprovação online",
+                "Assinatura eletrônica",
+                "Recursos básicos",
+                "Marca d'água “Criado com OrçaNext”",
+              ].map((f) => (
                 <div key={f} className="flex gap-2"><Check className="w-4 h-4 brand-text mt-0.5" /><span>{f}</span></div>
               ))}
             </div>
@@ -209,23 +230,63 @@ function Pricing() {
               <Button variant="outline" className="w-full h-11 border-black font-bold">COMEÇAR GRÁTIS</Button>
             </Link>
           </div>
-          <div className="relative bg-black text-white rounded-2xl p-8 border-2 border-[#00AD02]">
+
+          {/* Profissional */}
+          <div className="relative bg-black text-white rounded-2xl p-8 border-2 border-[#00AD02]" data-testid="pricing-pro-card">
             <div className="absolute -top-3 right-6"><Badge className="brand-bg text-white rounded-md">MAIS ESCOLHIDO</Badge></div>
             <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">Profissional</div>
             <div className="mt-2 flex items-baseline gap-2">
-              <div className="font-display text-5xl font-black text-white">R$ 49,90</div>
-              <div className="text-zinc-400">/mês</div>
+              <div className="font-display text-6xl font-black !text-white leading-none" data-testid="pricing-pro-price">R$ 49,90</div>
+              <div className="text-zinc-400 text-lg">/mês</div>
             </div>
-            <div className="text-zinc-400 mt-1">ou R$ 478,80/ano (R$ 39,90/mês)</div>
+            <div className="text-zinc-400 mt-2">ou R$ 478,80/ano (equivalente a R$ 39,90/mês)</div>
+            <p className="mt-4 text-white/90">Orçamentos ilimitados para quem quer crescer.</p>
             <div className="mt-6 space-y-2 text-sm">
-              {["Orçamentos ilimitados", "Sem marca d'água", "Recibos ilimitados", "Modelos vertical e horizontal", "Personalização de logo e cor", "Suporte prioritário"].map((f) => (
+              {[
+                "Orçamentos ilimitados",
+                "Clientes ilimitados",
+                "Produtos ilimitados",
+                "Serviços ilimitados",
+                "Modelos ilimitados",
+                "Recibos ilimitados",
+                "Sem marca d'água",
+                "PDF profissional",
+                "Modelo vertical",
+                "Modelo horizontal",
+                "Personalização",
+                "Aprovação online",
+                "Assinatura eletrônica",
+              ].map((f) => (
                 <div key={f} className="flex gap-2"><Check className="w-4 h-4 brand-text mt-0.5" /><span>{f}</span></div>
               ))}
             </div>
             <Link to="/register" className="block mt-8" data-testid="pricing-pro-cta">
-              <Button className="w-full h-11 brand-bg hover:bg-[#008a02] text-white font-bold">ASSINAR PROFISSIONAL</Button>
+              <Button className="w-full h-12 brand-bg hover:bg-[#008a02] text-white font-bold text-base">QUERO SER PROFISSIONAL</Button>
             </Link>
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function UpgradeCallout() {
+  return (
+    <section className="py-16 bg-white">
+      <div className="max-w-4xl mx-auto px-6">
+        <div className="relative overflow-hidden rounded-3xl bg-black text-white p-10 md:p-14 border-2 border-[#00AD02]">
+          <div className="absolute -right-20 -top-20 w-72 h-72 brand-bg opacity-20 blur-3xl rounded-full pointer-events-none" />
+          <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#00AD02] mb-3">Evolua quando precisar</div>
+          <h2 className="font-display text-3xl md:text-5xl font-black tracking-tight !text-white">15 orçamentos por mês são suficientes para começar.</h2>
+          <p className="mt-4 text-zinc-300 text-lg max-w-2xl">Quando seu negócio crescer, você não precisa mudar de ferramenta. Basta evoluir para o <b className="text-white">OrçaNext Profissional</b>.</p>
+          <div className="mt-6 flex items-baseline gap-3">
+            <div className="font-display text-5xl md:text-6xl font-black brand-text leading-none">R$ 49,90</div>
+            <div className="text-zinc-300 text-lg">/mês</div>
+          </div>
+          <p className="mt-1 text-zinc-400">Orçamentos ilimitados.</p>
+          <a href="#planos" data-testid="upgrade-callout-cta" className="inline-block mt-8">
+            <Button className="brand-bg hover:bg-[#008a02] text-white font-bold h-12 px-8 text-base">QUERO ORÇAMENTOS ILIMITADOS <ArrowRight className="ml-2 h-4 w-4" /></Button>
+          </a>
         </div>
       </div>
     </section>
@@ -267,9 +328,11 @@ function FAQ() {
     ["Preciso instalar alguma coisa?", "Não. É totalmente online, acessível pelo navegador em qualquer dispositivo."],
     ["Posso usar pelo celular?", "Sim. A interface é 100% responsiva para desktop, tablet e smartphone."],
     ["Posso enviar orçamento pelo WhatsApp?", "Sim. Cada orçamento gera um link público para compartilhar por WhatsApp, e-mail ou onde preferir."],
-    ["Quantos orçamentos posso criar gratuitamente?", "O plano gratuito permite criar até 50 novos orçamentos por mês."],
-    ["O que acontece depois dos 50?", "Você continua acessando e gerenciando seus orçamentos existentes, mas precisa aguardar o próximo ciclo ou fazer upgrade para o Profissional."],
-    ["O Profissional possui limite?", "Não. O plano Profissional oferece criação ilimitada de orçamentos e recursos ilimitados do plano."],
+    ["Quantos orçamentos posso criar gratuitamente?", "O plano gratuito permite criar até 15 novos orçamentos por mês."],
+    ["O limite de 15 orçamentos é mensal?", "Sim. O limite é renovado a cada ciclo mensal."],
+    ["O que acontece quando eu atingir 15 orçamentos?", "Você continuará podendo acessar e gerenciar seus orçamentos existentes, mas precisará aguardar o próximo ciclo mensal ou migrar para o plano Profissional para criar novos orçamentos."],
+    ["Posso criar orçamentos ilimitados?", "Sim. O plano Profissional permite criar orçamentos ilimitados."],
+    ["Quanto custa o plano Profissional?", "O plano Profissional custa R$ 49,90 por mês ou R$ 478,80 por ano."],
     ["Posso gerar recibos?", "Sim, no plano Profissional você pode emitir recibos ilimitados em PDF."],
     ["Posso cancelar?", "Sim, a qualquer momento. Seus dados permanecem preservados mesmo em caso de downgrade."],
   ];
@@ -295,11 +358,16 @@ function CTA() {
   return (
     <section className="py-24 bg-white">
       <div className="max-w-4xl mx-auto px-6 text-center">
-        <h2 className="font-display font-black text-4xl md:text-6xl tracking-tighter">Pronto para profissionalizar seus orçamentos?</h2>
-        <p className="mt-4 text-zinc-600 text-lg">Comece gratuitamente com até 50 orçamentos por mês e evolua para o Profissional quando precisar de recursos ilimitados.</p>
-        <Link to="/register" data-testid="final-cta">
-          <Button className="mt-8 brand-bg hover:bg-[#008a02] text-white font-bold h-14 px-10 text-base">COMEÇAR GRÁTIS <ArrowRight className="ml-2 h-4 w-4" /></Button>
-        </Link>
+        <h2 className="font-display font-black text-4xl md:text-6xl tracking-tighter">Pronto para transformar seus orçamentos em negócios fechados?</h2>
+        <p className="mt-4 text-zinc-600 text-lg">Comece gratuitamente com até 15 orçamentos por mês. Quando precisar de mais, tenha orçamentos ilimitados por apenas <b className="brand-text">R$ 49,90/mês</b>.</p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Link to="/register" data-testid="final-cta">
+            <Button className="brand-bg hover:bg-[#008a02] text-white font-bold h-14 px-10 text-base">COMEÇAR GRÁTIS <ArrowRight className="ml-2 h-4 w-4" /></Button>
+          </Link>
+          <a href="#planos" data-testid="final-cta-secondary">
+            <Button variant="outline" className="h-14 px-10 border-black text-black font-bold hover:bg-zinc-50 text-base">QUERO ORÇAMENTOS ILIMITADOS</Button>
+          </a>
+        </div>
       </div>
     </section>
   );
@@ -345,6 +413,7 @@ export default function Landing() {
       <Problem />
       <HowItWorks />
       <Benefits />
+      <UpgradeCallout />
       <Pricing />
       <Testimonials />
       <FAQ />
