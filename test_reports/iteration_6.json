@@ -1,0 +1,30 @@
+{
+  "summary": "Full backend + frontend validation of the new Onboarding Checklist feature (GET /api/onboarding/status, POST /api/onboarding/state, and OnboardingChecklist.jsx). 8/8 pytest cases passed. All UI flows (checklist visible at top with 3/4 progress for e2e user, product/service CTAs navigate correctly, skip -> compact card, resume -> full checklist, reload persistence, dismiss-compact hides card, all-done -> complete card with go-dashboard button, mobile 390x844 no horizontal scroll) worked as specified. Multi-tenant isolation confirmed (new user sees 0/4 while e2e sees 3/4). Empty state (no company) returns 200 with all steps=false. State restored to skipped=false, dismissed=false after tests.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard Overview", "issues": ["Pre-existing (not related to onboarding): Recharts warnings 'The width(-1) and height(-1) of chart should be greater than 0' fire on initial render. Cosmetic console noise only."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_onboarding.py",
+    "/app/test_reports/pytest/onboarding_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OnboardingChecklist.jsx correctly uses window focus listener to re-fetch status (matches spec).",
+    "Backend uses count_documents({...}, limit=1) — efficient existence check, good.",
+    "completed_count aggregates product OR service into a single step (matches spec: total=4).",
+    "Onboarding endpoints properly gated by get_current_user (401 without auth verified)."
+  ],
+  "updated_files": ["/app/backend/tests/test_onboarding.py"],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "e2e@orcanext.com / NewPass@123 (state restored to skipped=false, dismissed=false at end of tests)",
+  "seed_data_creation": "Test created a temporary product (TEST_UI_prod) to trigger all-done state, then deleted it. Test also creates ephemeral TEST_onb_* users during pytest run (multi-tenant isolation check) — these remain in DB but are prefixed for cleanup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Onboarding feature is fully functional. If further tests need to be added, note that the e2e user's state must be reset after any mutation via POST /api/onboarding/state {skipped:false, dismissed:false}. The checklist reads real company_id-scoped data so any test that creates products/services/quotes/clients for e2e user will affect the checklist state.",
+  "rca of the issue": "N/A — no issues found."
+}

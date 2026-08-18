@@ -594,6 +594,50 @@ async def get_my_company(user: dict = Depends(get_current_user)):
     return strip_id(company)
 
 
+# ---------- Onboarding checklist ----------
+class OnboardingStateIn(BaseModel):
+    skipped: Optional[bool] = None
+    dismissed: Optional[bool] = None
+
+
+@api.get("/onboarding/status")
+async def onboarding_status(user: dict = Depends(get_current_user)):
+    """Compute onboarding progress from real data (multi-tenant scoped by company_id).
+    Uses cheap count_documents with a limit-like approach (existence check only)."""
+    company = await db.companies.find_one({"owner_id": user["id"]})
+    steps = {"company": False, "client": False, "product": False, "service": False, "quote": False}
+    if company and (company.get("name") or "").strip():
+        steps["company"] = True
+        cid = company["id"]
+        # Existence checks — cheap
+        steps["client"]  = (await db.clients.count_documents({"company_id": cid}, limit=1)) > 0
+        steps["product"] = (await db.products.count_documents({"company_id": cid}, limit=1)) > 0
+        steps["service"] = (await db.services.count_documents({"company_id": cid}, limit=1)) > 0
+        steps["quote"]   = (await db.quotes.count_documents({"company_id": cid}, limit=1)) > 0
+    completed = sum([steps["company"], steps["client"], steps["product"] or steps["service"], steps["quote"]])
+    return {
+        "steps": steps,
+        "completed_count": completed,
+        "total": 4,
+        "all_done": completed >= 4,
+        "skipped": bool(user.get("onboarding_skipped")),
+        "dismissed": bool(user.get("onboarding_dismissed")),
+    }
+
+
+@api.post("/onboarding/state")
+async def onboarding_state(payload: OnboardingStateIn, user: dict = Depends(get_current_user)):
+    update = {}
+    if payload.skipped is not None:
+        update["onboarding_skipped"] = bool(payload.skipped)
+    if payload.dismissed is not None:
+        update["onboarding_dismissed"] = bool(payload.dismissed)
+    if update:
+        await db.users.update_one({"id": user["id"]}, {"$set": update})
+    return {"ok": True, **update}
+
+
+
 # ---------- Clients ----------
 @api.get("/clients")
 async def list_clients(q: str = "", company: dict = Depends(get_company)):

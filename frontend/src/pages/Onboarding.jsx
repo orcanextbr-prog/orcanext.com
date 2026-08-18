@@ -35,7 +35,7 @@ export default function Onboarding() {
       await api.post("/company", form);
       await refresh();
       toast.success("Empresa configurada!");
-      nav("/dashboard/quotes/new");
+      nav("/dashboard");
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail));
     } finally { setLoading(false); }
@@ -90,7 +90,7 @@ export default function Onboarding() {
           </div>
           <div className="flex justify-end">
             <Button type="submit" disabled={loading} className="brand-bg hover:bg-[#008a02] text-white font-bold h-11 px-8" data-testid="onb-submit">
-              {loading ? "Salvando…" : "CRIAR PRIMEIRO ORÇAMENTO"}
+              {loading ? "Salvando…" : "SALVAR E CONTINUAR"}
             </Button>
           </div>
         </form>

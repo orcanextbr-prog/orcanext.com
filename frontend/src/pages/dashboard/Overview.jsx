@@ -11,6 +11,7 @@ import {
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
+import OnboardingChecklist from "./OnboardingChecklist";
 
 const PERIODS = [
   { id: "7d", label: "7 dias" },
@@ -173,6 +174,8 @@ export default function Overview() {
           </Button>
         </Link>
       </div>
+
+      <OnboardingChecklist />
 
       {emptyAll ? (
         <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-8 md:p-12 text-center" data-testid="dashboard-empty">
