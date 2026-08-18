@@ -45,10 +45,10 @@ STRIPE_SECRET_KEY = BE_ENV.get("STRIPE_SECRET_KEY", "")
 EXPECTED = {
     "STRIPE_MODE": "live",
     "STRIPE_WEBHOOK_SECRET": "whsec_xPIslGh9gcMYIVuOFmoZPeqGMJY2Tfsu",
-    "STRIPE_MONTHLY_PRODUCT_ID": "prod_V5NRnLL9zJwNDB",
-    "STRIPE_MONTHLY_PRICE_ID": "price_1U5CgF5gVqE71TBy73ItqJsc",
-    "STRIPE_ANNUAL_PRODUCT_ID": "prod_V5Pejy1hoMPZTB",
-    "STRIPE_ANNUAL_PRICE_ID": "price_1U5Eov5gVqE71TByKJYf8Cpk",
+    "STRIPE_MONTHLY_PRODUCT_ID": "prod_V5puhDlK4Tl46d",
+    "STRIPE_MONTHLY_PRICE_ID": "price_1U5eEo5gVqE71TBy4OHNUN4F",
+    "STRIPE_ANNUAL_PRODUCT_ID": "prod_V5puhDlK4Tl46d",
+    "STRIPE_ANNUAL_PRICE_ID": "price_1U5eFn5gVqE71TBy68GGYLGR",
 }
 
 E2E_EMAIL = "e2e@orcanext.com"
@@ -137,8 +137,8 @@ class TestStripeCheckoutLive:
         assert "session_id" in j and "checkout_url" in j
         _assert_live_session(
             j["session_id"],
-            expected_price="price_1U5CgF5gVqE71TBy73ItqJsc",
-            expected_product="prod_V5NRnLL9zJwNDB",
+            expected_price="price_1U5eEo5gVqE71TBy4OHNUN4F",
+            expected_product="prod_V5puhDlK4Tl46d",
             expected_amount=4990,
             expected_interval="month",
         )
@@ -151,8 +151,8 @@ class TestStripeCheckoutLive:
         j = r.json()
         _assert_live_session(
             j["session_id"],
-            expected_price="price_1U5Eov5gVqE71TByKJYf8Cpk",
-            expected_product="prod_V5Pejy1hoMPZTB",
+            expected_price="price_1U5eFn5gVqE71TBy68GGYLGR",
+            expected_product="prod_V5puhDlK4Tl46d",
             expected_amount=47880,
             expected_interval="year",
         )
