@@ -1,0 +1,50 @@
+{
+  "summary": "E2E validation of the redesigned Dashboard (Overview.jsx) + new backend endpoint /api/dashboard/timeseries. 12/12 pytest cases green in /app/backend/tests/test_dashboard_redesign.py. Frontend UI verified with Playwright on Desktop 1920x1080, Tablet 768x1024 and Mobile 390x844 using the FREE user e2e@orcanext.com. All required data-testids present and visible: dashboard-greeting (shows real company name 'Empresa Teste' — no mock/fallback 'por aí'), cta-new-quote (navigates to /dashboard/quotes/new), primary KPIs (kpi-value-approved, kpi-conversion, kpi-approved), secondary KPIs (kpi-total, kpi-waiting, kpi-refused, kpi-sent) — none contain NaN/Infinity/undefined. Period buttons period-7d/30d/3m/all all trigger BOTH GET /api/dashboard/summary?period=... AND GET /api/dashboard/timeseries?period=... (network capture confirmed). Performance-chart renders recharts LineChart with Enviados (black #000) + Aprovados (#00AD02). Conversion-funnel with 5 stages (enviados=4, visualizados=4, aguardando=0, aprovados=0, assinados=0) is monotonic non-increasing. Recent-quotes + recent-see-all present. Quick-actions with all 4 buttons visible. Plan-status shows 'Gratuito' + '5 / 15 orçamentos' + '10 orçamentos restantes' + plan-upgrade-btn — FREE limit correctly 15. No horizontal scroll on mobile (docWidth=winWidth=390) or tablet (768). Conversion rate correctly shows 0% when sent=0 (verified in backend tests for 4 periods).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Overview / performance-chart", "issues": ["Recharts logs 6x warning 'The width(-1) and height(-1) of chart should be greater than 0' on initial mount before ResponsiveContainer measures. Chart still renders correctly. Non-blocking. Can be silenced by giving the wrapper an explicit min-height (already 256/288px) or by delaying render until size is known."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dashboard_redesign.py",
+    "/app/test_reports/pytest/iteration_5_dashboard.xml"
+  ],
+  "verification_evidence": {
+    "backend_pytest": "12/12 passed (test_usage_free_limit_is_15, test_summary_periods_no_nan[7d/30d/3m/all], test_timeseries_shape[7d-day/30d-day/3m-week/all-month], test_timeseries_requires_auth, test_summary_requires_auth, test_funnel_monotonic_from_summary)",
+    "greeting_seen": "Olá, Empresa Teste 👋",
+    "kpi_values_captured": {
+      "kpi-value-approved": "VALOR APROVADO | R$ 0,00 | Nenhum orçamento aprovado no período",
+      "kpi-conversion": "TAXA DE CONVERSÃO | 0% | 0 de 4 enviados",
+      "kpi-approved": "APROVADOS | 0 | de 5 orçamentos no total",
+      "kpi-total": "5", "kpi-waiting": "0", "kpi-refused": "0", "kpi-sent": "4"
+    },
+    "plan_text": "Gratuito · 5 / 15 orçamentos · 10 orçamentos restantes · Conhecer plano Profissional",
+    "funnel_values": "[4, 4, 0, 0, 0] (monotonic non-increasing)",
+    "period_filter_network": "7d & all: BOTH summary and timeseries requests captured with correct ?period=",
+    "responsive_scroll": "mobile 390x844 docWidth=390 winWidth=390 (no horizontal scroll); tablet 768x1024 docWidth=768 winWidth=768",
+    "cta_navigation": "cta-new-quote -> /dashboard/quotes/new (200 OK)"
+  },
+  "action_items": [
+    "Optional (non-blocking): eliminate the 6x recharts 'width(-1)/height(-1)' warnings by gating <ResponsiveContainer> render on a mounted flag or setting an explicit width/height on first paint."
+  ],
+  "critical_code_review_comments": [
+    "Overview.jsx:148 fallback name is 'por aí' — if company API ever returns null, header becomes 'Olá, por aí 👋'. Confirmed the real path shows the actual company name, so fine, but consider a neutral fallback like the user's own name.",
+    "Overview.jsx:157 emptyAll uses `total===0 && recent.length===0`. Because /quotes and /dashboard/summary load independently, in the very first render before the /quotes promise resolves recent.length is 0 while summary may already have total=5 — logic still works because it also requires total===0. Correct.",
+    "server.py:874-882 timeseries relies on ISO string prefix ($substrBytes on created_at) — safe only because created_at is stored as ISO string (verified via iso() helper). If any legacy quote has a Date object, aggregation would silently skip it. Consider $dateToString for robustness.",
+    "server.py:895-901 the 'day' timeline loops `while cur <= now` — for period=30d this yields up to 31 buckets which matches chart, ok. For 3m it yields 13-14 weekly points, ok. For 'all' with no quotes, single current-month bucket is returned (line 906-907) — chart still renders an 'empty' point, acceptable.",
+    "server.py 1911 lines — same recommendation as iter 4 to split into routers; non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dashboard_redesign.py (new, 12 tests)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (all data-testids present, all flows OK)"},
+  "test_credentials": "e2e@orcanext.com / NewPass@123 (FREE plan, 5/15 orçamentos this month)",
+  "seed_data_creation": "None. Existing 5 test quotes on e2e user were used as-is.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 5 covers the Dashboard redesign. To re-run backend: `python -m pytest /app/backend/tests/test_dashboard_redesign.py -v -o addopts=''`. e2e user has 5 quotes (4 ENVIADO/VISUALIZADO, 0 APROVADO). Empty state was not visually tested because e2e user has data; backend test test_summary_periods_no_nan[all] indirectly proves NaN safety at 0 sent. If empty-state UI verification is required, create a fresh user and login. FREE limit is enforced from platform_settings.free_limit falling back to FREE_QUOTE_LIMIT=15 (backend/.env).",
+  "rca of the issue": "N/A — no defects. Dashboard redesign meets all listed acceptance criteria."
+}

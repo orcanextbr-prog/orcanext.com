@@ -44,9 +44,12 @@ SaaS brasileiro multi-tenant para criar, enviar, aprovar e obter aceite eletrôn
   - Endpoint mock `/api/plan/upgrade` retorna 410 (obsoleto). `/api/plan/downgrade` agora chama `stripe.Subscription.modify(cancel_at_period_end=True)`.
   - `_apply_subscription_to_user()` centraliza sync compatível com Stripe API 2025 (`current_period_end` na SubscriptionItem).
 
+- **Dashboard Redesign (Fev/2026)**: `/dashboard/overview` refeito para o usuário entender o negócio em ~5s. Cabeçalho "Olá, {empresa} 👋" + CTA `+ Novo Orçamento`. KPIs primários com hierarquia (Valor Aprovado, Taxa de Conversão, Aprovados em cards pretos destacados) + secundários (Total, Aguardando, Recusados, Enviados). Gráfico **Desempenho** via recharts (LineChart Enviados vs Aprovados, cores #000 e #00AD02) com filtro 7d/30d/3m/all. **Funil** de 5 etapas (Enviados → Visualizados → Aguardando → Aprovados → Assinados) monotônico não-crescente. **Orçamentos Recentes** (últimos 5 via `/api/quotes`, tabela desktop / cards mobile) com "Ver todos". **Ações Rápidas** (Novo Orçamento/Cliente/Produto/Serviço). **Situação do Plano** — FREE: X/15 + barra + avisos 80%/atingido + CTA Pro; PRO: "Ilimitado ✓". **Estado vazio** amigável com CTA "Criar meu primeiro orçamento". Totalmente responsivo (desktop/tablet/mobile, sem scroll horizontal). Novo endpoint backend `GET /api/dashboard/timeseries?period=` (agregação multi-tenant, sem novas dependências — recharts já existente).
+
 ## Test Results
 - iteration_1: Backend 100% ✓ · Frontend 100% ✓
 - Impersonation (Fev/2026): curl E2E + Playwright screenshot ✓ (login → /admin → Entrar como → banner visível → Sair → volta ao admin).
+- iteration_5 — Dashboard Redesign: Backend 12/12 pytest ✓ · Frontend Playwright em 1920/768/390 ✓ · Todos data-testids presentes · Nenhum NaN/Infinity · Multi-tenant respeitado · Sem horizontal scroll.
 
 ## Backlog (P1/P2)
 - P1 — **Central de Suporte**: tickets abertos pelo usuário, respondidos em `/admin/support`.

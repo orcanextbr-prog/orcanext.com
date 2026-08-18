@@ -850,6 +850,76 @@ async def dashboard_summary(period: str = "30d", company: dict = Depends(get_com
     }
 
 
+@api.get("/dashboard/timeseries")
+async def dashboard_timeseries(period: str = "30d", company: dict = Depends(get_company)):
+    """Return time-bucketed series of Enviados vs Aprovados for the dashboard chart.
+    Multi-tenant enforced by company_id filter. Reuses existing quote docs; no schema change."""
+    now = now_utc()
+    if period == "7d":
+        since = now - timedelta(days=7); bucket_len = 10   # yyyy-mm-dd
+        step = timedelta(days=1); step_kind = "day"
+    elif period == "30d":
+        since = now - timedelta(days=30); bucket_len = 10
+        step = timedelta(days=1); step_kind = "day"
+    elif period == "3m":
+        since = now - timedelta(days=90); bucket_len = 7   # yyyy-Www approximated via iso-week
+        step = timedelta(days=7); step_kind = "week"
+    else:
+        since = None; bucket_len = 7                       # yyyy-mm
+        step = None; step_kind = "month"
+
+    match = {"company_id": company["id"]}
+    if since is not None:
+        match["created_at"] = {"$gte": iso(since)}
+    # created_at is stored as ISO string; substring gives day/month prefix.
+    group_expr = {"$substrBytes": ["$created_at", 0, bucket_len]}
+    pipeline = [
+        {"$match": match},
+        {"$group": {
+            "_id": {"b": group_expr, "s": "$status"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    rows = await db.quotes.aggregate(pipeline).to_list(2000)
+    buckets: dict[str, dict] = {}
+    for r in rows:
+        b = r["_id"]["b"]; s = r["_id"]["s"]; c = r["count"]
+        slot = buckets.setdefault(b, {"enviados": 0, "aprovados": 0})
+        if s in SENT_LIKE:
+            slot["enviados"] += c
+        if s in APPROVED_LIKE:
+            slot["aprovados"] += c
+
+    # Build the full timeline so the chart has no gaps.
+    series = []
+    if step_kind in ("day", "week"):
+        cur = since
+        while cur <= now:
+            key = iso(cur)[:bucket_len]
+            slot = buckets.get(key, {"enviados": 0, "aprovados": 0})
+            series.append({"date": key, **slot})
+            cur = cur + step
+    else:
+        # monthly: from earliest bucket to current month
+        keys = sorted(buckets.keys())
+        if not keys:
+            cur_key = iso(now)[:7]
+            series.append({"date": cur_key, "enviados": 0, "aprovados": 0})
+        else:
+            y, m = map(int, keys[0].split("-"))
+            end_y, end_m = now.year, now.month
+            while (y, m) <= (end_y, end_m):
+                key = f"{y:04d}-{m:02d}"
+                slot = buckets.get(key, {"enviados": 0, "aprovados": 0})
+                series.append({"date": key, **slot})
+                m += 1
+                if m > 12:
+                    m = 1; y += 1
+    return {"period": period, "granularity": step_kind, "series": series}
+
+
+
+
 @api.get("/quotes")
 async def list_quotes(status: str = "", q: str = "", company: dict = Depends(get_company)):
     query = {"company_id": company["id"]}
