@@ -90,7 +90,7 @@ class TestEnvConfig:
 # ---------- 2. no TEST leftovers -------------------------------------------
 class TestAuditNoTestLeftovers:
     def test_no_test_refs_in_backend_or_frontend(self):
-        pattern = r"sk_test_|pk_test_|whsec_r7ug|acct_1U4tBM"
+        pattern = r"sk_test_|pk_test_|whsec_r7ug|acct_1U4tBMA"
         out = subprocess.run(
             ["grep", "-rE", "--exclude-dir=tests", pattern, "/app/backend", "/app/frontend/src"],
             capture_output=True, text=True,

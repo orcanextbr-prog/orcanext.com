@@ -40,6 +40,34 @@ STRIPE_MONTHLY_PRICE_ID = os.environ.get("STRIPE_MONTHLY_PRICE_ID", "")
 STRIPE_ANNUAL_PRICE_ID = os.environ.get("STRIPE_ANNUAL_PRICE_ID", "")
 STRIPE_LOOKUP_MONTHLY = "orcanext_pro_monthly"
 STRIPE_LOOKUP_YEARLY = "orcanext_pro_yearly"
+
+# ---------- BYOK / anti-sandbox guard ----------
+# When STRIPE_MODE=live we REFUSE to boot with test-mode credentials or any
+# reference to the Emergent-managed sandbox account (acct_1U4tBM...). This
+# prevents a platform-managed integration from silently overriding the user's
+# own LIVE keys after a redeploy.
+if STRIPE_MODE == "live":
+    _guard_errors = []
+    if STRIPE_SECRET_KEY and not STRIPE_SECRET_KEY.startswith("sk_live_"):
+        _guard_errors.append("STRIPE_SECRET_KEY is not a sk_live_ key")
+    if STRIPE_PUBLISHABLE_KEY and not STRIPE_PUBLISHABLE_KEY.startswith("pk_live_"):
+        _guard_errors.append("STRIPE_PUBLISHABLE_KEY is not a pk_live_ key")
+    for _var, _val in [
+        ("STRIPE_SECRET_KEY", STRIPE_SECRET_KEY),
+        ("STRIPE_PUBLISHABLE_KEY", STRIPE_PUBLISHABLE_KEY),
+        ("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET),
+        ("STRIPE_MONTHLY_PRICE_ID", STRIPE_MONTHLY_PRICE_ID),
+        ("STRIPE_ANNUAL_PRICE_ID", STRIPE_ANNUAL_PRICE_ID),
+    ]:
+        if _val and "acct_1U4tBM" in _val:
+            _guard_errors.append(f"{_var} references the Emergent-managed sandbox acct_1U4tBM…")
+    if _guard_errors:
+        raise RuntimeError(
+            "STRIPE BYOK guard failed. Refusing to start with mixed TEST/managed-sandbox "
+            "credentials in STRIPE_MODE=live. Fix .env and redeploy. Details: "
+            + "; ".join(_guard_errors)
+        )
+
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
