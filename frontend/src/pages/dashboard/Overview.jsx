@@ -52,7 +52,7 @@ function KpiCard({ label, value, hint, icon: Icon, primary = false, testid }) {
           </span>
         )}
       </div>
-      <div className={`mt-3 font-display font-black leading-none ${primary ? "text-4xl md:text-5xl" : "text-2xl md:text-3xl"}`}>{value}</div>
+      <div className={`mt-3 font-display font-black leading-none ${primary ? "text-4xl md:text-5xl text-white" : "text-2xl md:text-3xl"}`}>{value}</div>
       {hint && <div className={`mt-2 text-xs ${primary ? "text-zinc-300" : "text-zinc-500"}`}>{hint}</div>}
     </div>
   );

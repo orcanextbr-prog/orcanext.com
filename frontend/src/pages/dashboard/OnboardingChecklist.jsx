@@ -84,7 +84,7 @@ export default function OnboardingChecklist() {
           <PartyPopper className="w-7 h-7" />
         </div>
         <div className="flex-1">
-          <div className="font-display text-xl md:text-2xl font-black">🎉 Tudo pronto!</div>
+          <div className="font-display text-xl md:text-2xl font-black text-white">🎉 Tudo pronto!</div>
           <p className="text-zinc-300 text-sm md:text-base mt-1">Seu OrçaNext está configurado. Agora você já pode criar e enviar seus orçamentos profissionais.</p>
         </div>
         <Button onClick={() => setState({ dismissed: true })} disabled={busy} data-testid="onboarding-go-dashboard"
