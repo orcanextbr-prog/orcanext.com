@@ -1,0 +1,40 @@
+{
+  "summary": "Stripe TEST -> LIVE migration verified end-to-end. 17/17 tests passed in /app/backend/tests/test_stripe_live_migration.py. Confirmed: (1) backend/.env holds all expected LIVE keys and product/price IDs; (2) zero occurrences of sk_test_/pk_test_/whsec_r7ug/acct_1U4tBM in /app/backend (excluding tests file) and /app/frontend/src; (3) frontend has no hardcoded pk_live_/sk_live_/price_1U5.../prod_V5... strings — publishable key not embedded; (4) POST /api/stripe/checkout monthly returns cs_live_ session with livemode=True, price_id=price_1U5CgF5gVqE71TBy73ItqJsc, product=prod_V5NRnLL9zJwNDB, currency=brl, unit_amount=4990, interval=month; (5) yearly returns cs_live_ session with price_1U5Eov5gVqE71TByKJYf8Cpk, prod_V5Pejy1hoMPZTB, unit_amount=47880, interval=year; (6) /api/stripe/webhook without signature -> 400 'Assinatura inválida'; (7) /api/plan/upgrade -> 410; (8) /api/stripe/customer-portal without stripe_customer_id -> 400; (9) regressions /api/health, /api/plan (auth-required, returns plan/prices/free_limit), and login e2e@orcanext.com all pass. No real charges created — sessions are unpaid until a card is entered on stripe.com.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_stripe_live_migration.py",
+    "/app/test_reports/pytest/iteration_4_stripe.xml"
+  ],
+  "verification_evidence": {
+    "monthly_session_example": "cs_live_... retrieved with livemode=True, price=price_1U5CgF5gVqE71TBy73ItqJsc, product=prod_V5NRnLL9zJwNDB, currency=brl, unit_amount=4990, interval=month",
+    "yearly_session_example":  "cs_live_... retrieved with livemode=True, price=price_1U5Eov5gVqE71TByKJYf8Cpk, product=prod_V5Pejy1hoMPZTB, currency=brl, unit_amount=47880, interval=year",
+    "audit_grep": "grep -rE 'sk_test_|pk_test_|whsec_r7ug|acct_1U4tBM' /app/backend /app/frontend/src --exclude-dir=tests -> 0 matches",
+    "frontend_grep": "grep -rE 'pk_live_|sk_live_|price_1U5|prod_V5' /app/frontend/src -> 0 matches",
+    "webhook_no_sig_status": 400,
+    "plan_upgrade_status": 410,
+    "customer_portal_no_customer_status": 400,
+    "regression_pass_rate": "17/17 (100%)"
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:1275-1286 correctly prefers explicit LIVE Price IDs from env vars and falls back to lookup_key only if unset — clean migration path.",
+    "server.py:1290-1296 auto-creates a Stripe Customer and persists stripe_customer_id on first checkout — idempotent per user.",
+    "server.py:1423-1430 webhook rejects missing/invalid signatures with 400 (proper). STRIPE_WEBHOOK_SECRET is required for handler to run — good defense.",
+    "Publishable key is NOT exposed to frontend; the backend returns a Stripe-hosted checkout_url and the browser redirects — safest pattern, no client-side Stripe.js needed. Confirm this is the intended UX (no embedded card element).",
+    "server.py is 1911 lines — recommend splitting into routers (auth/quotes/stripe/support/admin) for maintainability. Non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stripe_live_migration.py (new, 17 tests)"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "e2e@orcanext.com / NewPass@123 (FREE); admin@orcanext.com / Admin@2026 (SUPER_ADMIN)",
+  "seed_data_creation": "None. The tests only create Stripe Checkout Sessions (safe — unpaid until user enters card at stripe.com) and attach a stripe_customer_id to the e2e user. The customer-portal test unsets stripe_customer_id via Mongo before asserting the 400 branch, then leaves the user without one (subsequent checkout will recreate it).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 4 focused on Stripe LIVE migration only. All prior regression coverage lives in /app/backend/tests/test_bug_audit.py (iteration 3 verified) and /app/backend/tests/test_health_and_bootstrap.py (iteration 3 verified). To rerun the Stripe suite: `python -m pytest /app/backend/tests/test_stripe_live_migration.py -v -o addopts=''`. Note: the e2e user (e2e@orcanext.com) will have a Stripe LIVE customer created by test_checkout_monthly/yearly and then unset again by test_customer_portal — this is by design and safe. STRIPE_ACCOUNT_ID in backend/.env is acct_1U5Bfl5gVqE71TBy (LIVE); the previous TEST acct 1U4tBM is fully removed.",
+  "rca of the issue": "N/A — no issues. Migration is complete and correct."
+}

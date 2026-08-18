@@ -36,6 +36,8 @@ STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_MODE = os.environ.get("STRIPE_MODE", "test")
+STRIPE_MONTHLY_PRICE_ID = os.environ.get("STRIPE_MONTHLY_PRICE_ID", "")
+STRIPE_ANNUAL_PRICE_ID = os.environ.get("STRIPE_ANNUAL_PRICE_ID", "")
 STRIPE_LOOKUP_MONTHLY = "orcanext_pro_monthly"
 STRIPE_LOOKUP_YEARLY = "orcanext_pro_yearly"
 if STRIPE_SECRET_KEY:
@@ -1268,11 +1270,20 @@ async def stripe_create_checkout(payload: StripeCheckoutIn, user: dict = Depends
     """Create a Stripe Checkout Session for a recurring subscription."""
     if not STRIPE_SECRET_KEY:
         raise HTTPException(503, "Billing indisponível: Stripe não configurado")
-    lookup = STRIPE_LOOKUP_MONTHLY if payload.billing_cycle == "monthly" else STRIPE_LOOKUP_YEARLY
-    prices = stripe.Price.list(lookup_keys=[lookup], active=True, limit=1).data
-    if not prices:
-        raise HTTPException(500, f"Preço Stripe não encontrado: {lookup}")
-    price = prices[0]
+    # Prefer explicit LIVE Price IDs from env vars; fall back to lookup_key for
+    # backwards compatibility with the earlier sandbox setup.
+    explicit_price_id = STRIPE_MONTHLY_PRICE_ID if payload.billing_cycle == "monthly" else STRIPE_ANNUAL_PRICE_ID
+    if explicit_price_id:
+        try:
+            price = stripe.Price.retrieve(explicit_price_id)
+        except stripe.error.StripeError as e:
+            raise HTTPException(500, f"Preço Stripe não encontrado ({explicit_price_id}): {e.user_message or 'erro'}")
+    else:
+        lookup = STRIPE_LOOKUP_MONTHLY if payload.billing_cycle == "monthly" else STRIPE_LOOKUP_YEARLY
+        prices = stripe.Price.list(lookup_keys=[lookup], active=True, limit=1).data
+        if not prices:
+            raise HTTPException(500, f"Preço Stripe não encontrado: {lookup}")
+        price = prices[0]
 
     # Reuse or create the Stripe Customer for this user
     customer_id = user.get("stripe_customer_id")
@@ -1295,7 +1306,7 @@ async def stripe_create_checkout(payload: StripeCheckoutIn, user: dict = Depends
         metadata={
             "orcanext_user_id": user["id"],
             "billing_cycle": payload.billing_cycle,
-            "lookup_key": lookup,
+            "price_id": price.id,
         },
         subscription_data={
             "metadata": {
