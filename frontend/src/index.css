@@ -25,7 +25,6 @@ body {
 h1, h2, h3, h4, h5, h6, .font-display {
   font-family: "Outfit", ui-sans-serif, system-ui, sans-serif;
   letter-spacing: -0.02em;
-  color: #000000;
 }
 
 @layer base {
