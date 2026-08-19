@@ -85,7 +85,7 @@ export default function OnboardingChecklist() {
         </div>
         <div className="flex-1">
           <div className="font-display text-xl md:text-2xl font-black text-white">🎉 Tudo pronto!</div>
-          <p className="text-zinc-300 text-sm md:text-base mt-1">Seu OrçaNext está configurado. Agora você já pode criar e enviar seus orçamentos profissionais.</p>
+          <p className="text-white text-sm md:text-base mt-1">Seu OrçaNext está configurado. Agora você já pode criar e enviar seus orçamentos profissionais.</p>
         </div>
         <Button onClick={() => setState({ dismissed: true })} disabled={busy} data-testid="onboarding-go-dashboard"
           className="brand-bg hover:bg-[#008a02] text-white font-bold rounded-xl">

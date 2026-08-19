@@ -45,7 +45,7 @@ function KpiCard({ label, value, hint, icon: Icon, primary = false, testid }) {
     <div data-testid={testid}
       className={`rounded-2xl p-5 md:p-6 transition ${primary ? "bg-black text-white border border-black" : "bg-white text-black border border-zinc-200 hover:border-zinc-300"}`}>
       <div className="flex items-center justify-between">
-        <span className={`text-[11px] font-bold uppercase tracking-widest ${primary ? "text-zinc-400" : "text-zinc-500"}`}>{label}</span>
+        <span className={`text-[11px] font-bold uppercase tracking-widest ${primary ? "text-white" : "text-zinc-500"}`}>{label}</span>
         {Icon && (
           <span className={`w-8 h-8 rounded-lg grid place-items-center ${primary ? "bg-[#00AD02]/20 text-[#00AD02]" : "bg-zinc-100 text-zinc-600"}`}>
             <Icon className="w-4 h-4" />
@@ -53,7 +53,7 @@ function KpiCard({ label, value, hint, icon: Icon, primary = false, testid }) {
         )}
       </div>
       <div className={`mt-3 font-display font-black leading-none ${primary ? "text-4xl md:text-5xl text-white" : "text-2xl md:text-3xl"}`}>{value}</div>
-      {hint && <div className={`mt-2 text-xs ${primary ? "text-zinc-300" : "text-zinc-500"}`}>{hint}</div>}
+      {hint && <div className={`mt-2 text-xs ${primary ? "text-white" : "text-zinc-500"}`}>{hint}</div>}
     </div>
   );
 }
