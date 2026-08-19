@@ -1412,23 +1412,52 @@ async def stripe_create_checkout(payload: StripeCheckoutIn, user: dict = Depends
     """Create a Stripe Checkout Session for a recurring subscription."""
     if not STRIPE_SECRET_KEY:
         raise HTTPException(503, "Billing indisponível: Stripe não configurado")
-    # Prefer explicit LIVE Price IDs from env vars; fall back to lookup_key for
-    # backwards compatibility with the earlier sandbox setup.
-    explicit_price_id = STRIPE_MONTHLY_PRICE_ID if payload.billing_cycle == "monthly" else STRIPE_ANNUAL_PRICE_ID
-    if explicit_price_id:
-        try:
-            price = stripe.Price.retrieve(explicit_price_id)
-        except stripe.error.StripeError as e:
-            raise HTTPException(500, f"Preço Stripe não encontrado ({explicit_price_id}): {e.user_message or 'erro'}")
-    else:
-        lookup = STRIPE_LOOKUP_MONTHLY if payload.billing_cycle == "monthly" else STRIPE_LOOKUP_YEARLY
-        prices = stripe.Price.list(lookup_keys=[lookup], active=True, limit=1).data
-        if not prices:
-            raise HTTPException(500, f"Preço Stripe não encontrado: {lookup}")
-        price = prices[0]
 
-    # Reuse or create the Stripe Customer for this user
+    # ---- Resolve Price ID strictly from env (BYOK) ----
+    # Never fall back to lookup_keys: on a Stripe account migration the same
+    # lookup key can still point at an archived/wrong price and cause silent
+    # "No such price" or wrong-amount charges.
+    explicit_price_id = STRIPE_MONTHLY_PRICE_ID if payload.billing_cycle == "monthly" else STRIPE_ANNUAL_PRICE_ID
+    if not explicit_price_id:
+        raise HTTPException(
+            500,
+            "Preço Stripe não configurado. Defina STRIPE_MONTHLY_PRICE_ID e "
+            "STRIPE_ANNUAL_PRICE_ID nas variáveis de ambiente do backend."
+        )
+    try:
+        price = stripe.Price.retrieve(explicit_price_id)
+    except stripe.error.StripeError as e:
+        raise HTTPException(
+            500,
+            f"Preço Stripe não encontrado ({explicit_price_id}): {e.user_message or str(e)}. "
+            "Verifique se STRIPE_MONTHLY_PRICE_ID/STRIPE_ANNUAL_PRICE_ID batem com a conta em uso."
+        )
+    if STRIPE_MODE == "live" and not price.livemode:
+        raise HTTPException(500, f"Price ID {price.id} não é LIVE mas STRIPE_MODE=live.")
+
+    # ---- Resolve/repair Stripe Customer for this user ----
+    # A stale customer_id (created against a different Stripe account — e.g. an
+    # older sandbox or a claimed test account) will make checkout fail with
+    # "No such customer: cus_XXXX". If retrieve fails or livemode doesn't match,
+    # we transparently discard the stale ID and create a fresh one in the
+    # currently-configured account.
     customer_id = user.get("stripe_customer_id")
+    if customer_id:
+        try:
+            cust_check = stripe.Customer.retrieve(customer_id)
+            if getattr(cust_check, "deleted", False):
+                raise stripe.error.InvalidRequestError("customer deleted", None, code="resource_missing")
+            if STRIPE_MODE == "live" and not getattr(cust_check, "livemode", True):
+                raise stripe.error.InvalidRequestError("customer belongs to test mode", None, code="resource_missing")
+        except stripe.error.StripeError as e:
+            # Stale customer — clear it and any stale subscription reference too.
+            logger.warning("Discarding stale stripe_customer_id=%s for user=%s: %s", customer_id, user["id"], e)
+            customer_id = None
+            await db.users.update_one(
+                {"id": user["id"]},
+                {"$unset": {"stripe_customer_id": "", "stripe_subscription_id": ""}},
+            )
+
     if not customer_id:
         cust = stripe.Customer.create(
             email=user["email"], name=user.get("name"),
