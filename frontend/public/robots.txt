@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+Allow: /forgot-password
+
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /onboarding
+Disallow: /billing
+Disallow: /reset-password
+Disallow: /q/
+
+Sitemap: https://orcanext.com/sitemap.xml
