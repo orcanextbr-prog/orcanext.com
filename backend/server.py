@@ -137,29 +137,47 @@ def strip_id(d: dict) -> dict:
 
 # ---------- Auth dependency ----------
 async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    if not token:
-        raise HTTPException(401, "Não autenticado")
-    try:
-        payload = decode_token(token)
-        if payload.get("type") != "access":
-            raise HTTPException(401, "Token inválido")
-        user = await db.users.find_one({"id": payload["sub"]})
-        if not user:
-            raise HTTPException(401, "Usuário não encontrado")
-        user = strip_id(user)
-        user.pop("password_hash", None)
-        if payload.get("impersonated_by"):
-            user["impersonated_by"] = payload["impersonated_by"]
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Sessão expirada")
-    except jwt.InvalidTokenError:
-        raise HTTPException(401, "Token inválido")
+    # 1) Legacy JWT (email/password) — cookie or Authorization: Bearer <jwt>
+    bearer = ""
+    auth_hdr = request.headers.get("Authorization", "")
+    if auth_hdr.startswith("Bearer "):
+        bearer = auth_hdr[7:]
+    jwt_token = request.cookies.get("access_token") or bearer
+    if jwt_token:
+        try:
+            payload = decode_token(jwt_token)
+            if payload.get("type") == "access":
+                user = await db.users.find_one({"id": payload["sub"]})
+                if user:
+                    user = strip_id(user)
+                    user.pop("password_hash", None)
+                    if payload.get("impersonated_by"):
+                        user["impersonated_by"] = payload["impersonated_by"]
+                    return user
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            pass  # fall through to Emergent session_token flow
+
+    # 2) Emergent-managed Google OAuth — session_token cookie or bearer
+    session_token = request.cookies.get("session_token") or bearer
+    if session_token:
+        sess = await db.user_sessions.find_one({"session_token": session_token})
+        if sess:
+            expires_at = sess.get("expires_at")
+            if isinstance(expires_at, str):
+                try:
+                    expires_at = datetime.fromisoformat(expires_at)
+                except Exception:
+                    expires_at = None
+            if expires_at is not None:
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if expires_at >= now_utc():
+                    user = await db.users.find_one({"id": sess["user_id"]})
+                    if user:
+                        user = strip_id(user)
+                        user.pop("password_hash", None)
+                        return user
+    raise HTTPException(401, "Não autenticado")
 
 
 async def get_company(user: dict = Depends(get_current_user)) -> dict:
@@ -351,6 +369,8 @@ async def _bootstrap_db():
         await db.support_tickets.create_index("number", unique=True)
         await db.support_tickets.create_index([("status", 1), ("updated_at", -1)])
         await db.support_messages.create_index([("ticket_id", 1), ("created_at", 1)])
+        await db.user_sessions.create_index("session_token", unique=True)
+        await db.user_sessions.create_index("user_id")
     except Exception as e:
         logger.warning("Index bootstrap warning: %s", e)
     try:
@@ -503,8 +523,15 @@ async def login(payload: LoginIn, response: Response):
 
 
 @api.post("/auth/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        try:
+            await db.user_sessions.delete_one({"session_token": session_token})
+        except Exception:
+            pass
     response.delete_cookie("access_token", path="/")
+    response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
 
@@ -519,6 +546,90 @@ async def me(user: dict = Depends(get_current_user)):
 
 # ---------- Password reset (magic link) ----------
 import hashlib
+import httpx
+
+
+# ---------- Emergent-managed Google OAuth ----------
+EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+OWNER_EMAIL = "orcanextbr@gmail.com"
+
+
+class SessionExchangeIn(BaseModel):
+    session_id: str
+
+
+def set_session_cookie(resp: Response, token: str):
+    # REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    resp.set_cookie("session_token", token, httponly=True, secure=True,
+                    samesite="none", max_age=7 * 24 * 3600, path="/")
+
+
+@api.post("/auth/session")
+async def auth_session_exchange(payload: SessionExchangeIn, response: Response):
+    """Exchange the Emergent OAuth session_id (from URL fragment) for a session_token
+    and upsert the user. Sets an httpOnly cookie for follow-up requests."""
+    if not payload.session_id or len(payload.session_id) < 8:
+        raise HTTPException(400, "session_id inválido")
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            r = await client.get(
+                EMERGENT_SESSION_URL,
+                headers={"X-Session-ID": payload.session_id},
+            )
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Falha ao contatar Emergent Auth: {e}")
+    if r.status_code != 200:
+        raise HTTPException(401, "Sessão OAuth inválida ou expirada")
+    data = r.json()
+    email = (data.get("email") or "").lower().strip()
+    name = (data.get("name") or (email.split("@")[0] if email else "")).strip()
+    picture = data.get("picture")
+    session_token = data.get("session_token")
+    if not email or not session_token:
+        raise HTTPException(502, "Resposta inválida do Emergent Auth")
+
+    now = now_utc()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        uid = new_id()
+        role = "super_admin" if email == OWNER_EMAIL else "user"
+        user = {
+            "id": uid, "email": email, "name": name or email,
+            "picture": picture,
+            "password_hash": "",
+            "role": role, "plan": "FREE",
+            "auth_provider": "google",
+            "created_at": iso(now),
+        }
+        await db.users.insert_one(user)
+    else:
+        update = {}
+        if not user.get("name") and name:
+            update["name"] = name
+        if picture and user.get("picture") != picture:
+            update["picture"] = picture
+        if email == OWNER_EMAIL and user.get("role") not in ("admin", "super_admin"):
+            update["role"] = "super_admin"
+        if not user.get("auth_provider"):
+            update["auth_provider"] = "hybrid" if user.get("password_hash") else "google"
+        if update:
+            await db.users.update_one({"id": user["id"]}, {"$set": update})
+            user.update(update)
+
+    if user.get("blocked"):
+        raise HTTPException(403, "Conta bloqueada. Contate o suporte.")
+
+    await db.user_sessions.insert_one({
+        "id": new_id(),
+        "user_id": user["id"],
+        "session_token": session_token,
+        "expires_at": iso(now + timedelta(days=7)),
+        "created_at": iso(now),
+    })
+    set_session_cookie(response, session_token)
+    user = strip_id(user)
+    user.pop("password_hash", None)
+    return {"user": user}
 
 
 def _hash_token(t: str) -> str:

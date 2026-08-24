@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { Toaster } from "sonner";
 
@@ -25,6 +25,7 @@ import Admin from "@/pages/Admin";
 import AdminSupport from "@/pages/AdminSupport";
 import BillingSuccess from "@/pages/BillingSuccess";
 import BillingCancel from "@/pages/BillingCancel";
+import AuthCallback from "@/pages/AuthCallback";
 
 function Protected({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -44,41 +45,52 @@ function CompanyGuard({ children }) {
   return children;
 }
 
+function AppRoutes() {
+  // Detect OAuth return synchronously so ProtectedRoute doesn't race the session exchange.
+  const location = useLocation();
+  if (location.hash?.includes("session_id=")) {
+    return <AuthCallback />;
+  }
+  return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/q/:token" element={<PublicQuote />} />
+      <Route path="/billing/success" element={<Protected><BillingSuccess /></Protected>} />
+      <Route path="/billing/cancel" element={<Protected><BillingCancel /></Protected>} />
+
+      <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
+
+      <Route path="/dashboard" element={<Protected><CompanyGuard><DashboardLayout /></CompanyGuard></Protected>}>
+        <Route index element={<Overview />} />
+        <Route path="overview" element={<Overview />} />
+        <Route path="quotes" element={<QuotesList />} />
+        <Route path="quotes/new" element={<QuoteEditor />} />
+        <Route path="quotes/:id" element={<QuoteEditor />} />
+        <Route path="clients" element={<Clients />} />
+        <Route path="products" element={<Products />} />
+        <Route path="services" element={<Services />} />
+        <Route path="receipts" element={<Receipts />} />
+        <Route path="company" element={<MyCompany />} />
+        <Route path="plan" element={<MyPlan />} />
+        <Route path="support" element={<Support />} />
+      </Route>
+
+      <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
+      <Route path="/admin/support" element={<Protected adminOnly><AdminSupport /></Protected>} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Toaster position="top-right" richColors closeButton />
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/q/:token" element={<PublicQuote />} />
-          <Route path="/billing/success" element={<Protected><BillingSuccess /></Protected>} />
-          <Route path="/billing/cancel" element={<Protected><BillingCancel /></Protected>} />
-
-          <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
-
-          <Route path="/dashboard" element={<Protected><CompanyGuard><DashboardLayout /></CompanyGuard></Protected>}>
-            <Route index element={<Overview />} />
-            <Route path="overview" element={<Overview />} />
-            <Route path="quotes" element={<QuotesList />} />
-            <Route path="quotes/new" element={<QuoteEditor />} />
-            <Route path="quotes/:id" element={<QuoteEditor />} />
-            <Route path="clients" element={<Clients />} />
-            <Route path="products" element={<Products />} />
-            <Route path="services" element={<Services />} />
-            <Route path="receipts" element={<Receipts />} />
-            <Route path="company" element={<MyCompany />} />
-            <Route path="plan" element={<MyPlan />} />
-            <Route path="support" element={<Support />} />
-          </Route>
-
-          <Route path="/admin" element={<Protected adminOnly><Admin /></Protected>} />
-          <Route path="/admin/support" element={<Protected adminOnly><AdminSupport /></Protected>} />
-        </Routes>
+        <AppRoutes />
       </BrowserRouter>
     </AuthProvider>
   );
