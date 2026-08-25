@@ -1,4 +1,5 @@
 import "@/App.css";
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { Toaster } from "sonner";
@@ -48,6 +49,15 @@ function CompanyGuard({ children }) {
 function AppRoutes() {
   // Detect OAuth return synchronously so ProtectedRoute doesn't race the session exchange.
   const location = useLocation();
+
+  // Meta Pixel — fire a PageView on every client-side navigation (initial hit
+  // is already handled by the inline script in public/index.html).
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof window.fbq === "function") {
+      window.fbq("track", "PageView");
+    }
+  }, [location.pathname, location.search]);
+
   if (location.hash?.includes("session_id=")) {
     return <AuthCallback />;
   }
