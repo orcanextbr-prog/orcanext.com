@@ -831,7 +831,7 @@ function Footer() {
 export default function Landing() {
   useEffect(() => {
     // Improve default document title/description on the landing route.
-    document.title = "OrçaNext — Crie. Envie. Aprove. Receba.";
+    document.title = "OrçaNext";
   }, []);
   return (
     <div className="App bg-white text-black selection:bg-[#00AD02] selection:text-white" data-testid="landing-page">
