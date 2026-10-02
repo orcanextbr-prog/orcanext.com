@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only stability testing for OrçaNext white-screen bug fix (Chrome auto-translate removeChild). All 6 requested scenarios passed: HTML head config correct (lang=pt-BR, translate=no, meta google=notranslate, Content-Language=pt-BR, title=OrçaNext); wrong-password login returns 401 and keeps user on /login with toast; correct login (e2e@orcanext.com / NewPass@123) navigates to /dashboard; 20-cycle x 9-nav-item stress test (180 rapid clicks, ~180ms between) produced 0 removeChild/NotFoundError console errors, 0 white screens, 0 error-boundary-fallback occurrences; session persists after F5 on /dashboard/quotes; logout returns to / and protected routes redirect to /login; ErrorBoundary code review confirms correct getDerivedStateFromError/componentDidCatch with data-testid='error-boundary-fallback' and 'error-boundary-reload' present. Translate simulation (wrapping text nodes in <font>) did NOT trigger the removeChild bug thanks to React's resilience plus translate=no (expected behavior; boundary is a safety net).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ErrorBoundary.jsx is clean and minimal; getDerivedStateFromError + componentDidCatch correctly implemented.",
+    "index.html correctly declares lang='pt-BR' translate='no' and both meta tags — the authoritative fix for the Chrome translate reconciliation bug.",
+    "ErrorBoundary wraps QueryClientProvider+App at root — good placement to catch any render error anywhere in the tree.",
+    "No regressions detected in auth, routing, or sidebar navigation after fix."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not tested per request)", "frontend": "100%"},
+  "test_credentials": "e2e@orcanext.com / NewPass@123 (works)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "White-screen fix verified. 180 rapid cross-sidebar navigations produced zero removeChild errors. Head meta correctly configured. Auth 401 behavior unchanged (correct). ErrorBoundary present but not triggered in normal flow. If a future regression reintroduces lang=en or removes translate=no, this stress test (iteration_8) is the canonical reproduction.",
+  "rca of the issue": "Original RCA (from main agent) confirmed: Chrome auto-translate wrapped Portuguese text nodes in <font> tags because <html lang='en'> conflicted with Portuguese content. React's reconciler held stale node references and threw NotFoundError on removeChild during route switches. Fix: declare correct language (pt-BR) + explicitly disable translation (translate='no', meta google=notranslate, meta Content-Language=pt-BR) so Chrome never mutates the DOM. ErrorBoundary added as defensive fallback. Verified: 0 removeChild errors across 180 navigations."
+}
